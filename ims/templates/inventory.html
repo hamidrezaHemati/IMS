@@ -1,52 +1,52 @@
 {% extends "base.html" %}
-{% block title %}Inventory &amp; Categories — Component IMS{% endblock %}
-{% block mobile_title %}Inventory / Items{% endblock %}
+{% block title %}موجودی و دسته‌بندی‌ها — سامانه مدیریت انبار{% endblock %}
+{% block mobile_title %}موجودی و قطعات{% endblock %}
 
 {% block content %}
 <div class="page-header">
   <div>
-    <h1 class="page-title">Inventory &amp; Categories</h1>
-    <p class="page-subtitle">Manage electronic and mechanical components, specifications, and category hierarchies</p>
+    <h1 class="page-title">موجودی قطعات و دسته‌بندی‌ها</h1>
+    <p class="page-subtitle">مدیریت مشخصات فنی قطعات الکترونیک و مکانیک و ساختار دسته‌بندی‌ها</p>
   </div>
   <div class="page-actions">
-    <button type="button" id="btn-new-item" class="btn btn-primary">+ Add Item</button>
-    <button type="button" id="btn-new-category" class="btn">+ Add Category</button>
+    <button type="button" id="btn-new-item" class="btn btn-primary">+ افزودن قطعه</button>
+    <button type="button" id="btn-new-category" class="btn btn-accent">+ افزودن دسته‌بندی</button>
   </div>
 </div>
 
 <div class="tabs" style="margin-bottom:16px;">
-  <button type="button" class="tab-btn active" data-tab="items">Items &amp; Stock</button>
-  <button type="button" class="tab-btn" data-tab="categories">Category Hierarchy</button>
+  <button type="button" class="tab-btn active" data-tab="items">اقلام و موجودی</button>
+  <button type="button" class="tab-btn" data-tab="categories">ساختار دسته‌بندی‌ها</button>
 </div>
 
-<!-- Items Tab -->
+<!-- تب اقلام -->
 <section id="tab-items" class="card">
   <div class="card-header">
-    <h2 class="card-title">Component Catalog</h2>
+    <h2 class="card-title">فهرست قطعات انبار</h2>
     <div style="display:flex;gap:8px;align-items:center;">
-      <button type="button" id="inv-filter-toggle" class="btn btn-sm filter-toggle-mobile">Toggle Filters</button>
-      <a href="{{ url_for('pages.excel') }}#export" class="btn btn-sm">Excel Export</a>
+      <button type="button" id="inv-filter-toggle" class="btn btn-sm filter-toggle-mobile">فیلترهای پیشرفته</button>
+      <a href="{{ url_for('pages.excel') }}#export" class="btn btn-sm">خروجی اکسل</a>
     </div>
   </div>
 
   <div class="card-body" style="border-bottom:1px solid var(--border-color);">
     <div class="form-grid" style="margin-bottom:10px;">
       <div class="field">
-        <label for="f-search">Quick Search</label>
-        <input id="f-search" class="input" type="search" placeholder="Code, model, voltage, location...">
+        <label for="f-search">جستجوی سریع</label>
+        <input id="f-search" class="input" type="search" placeholder="کد، مدل، ولتاژ، محل نگهداری...">
       </div>
       <div class="field">
-        <label for="f-parent-cat">Main Category</label>
+        <label for="f-parent-cat">دسته‌بندی اصلی</label>
         <select id="f-parent-cat" class="select"></select>
       </div>
       <div class="field">
-        <label for="f-sub-cat">Subcategory</label>
+        <label for="f-sub-cat">زیردسته</label>
         <select id="f-sub-cat" class="select"></select>
       </div>
       <div class="field">
-        <label for="f-mounting">Mounting Type</label>
+        <label for="f-mounting">نوع نصب</label>
         <select id="f-mounting" class="select">
-          <option value="">All</option>
+          <option value="">همه</option>
           <option value="SMD">SMD</option>
           <option value="DIP">DIP</option>
         </select>
@@ -55,42 +55,42 @@
 
     <div id="inv-adv-filters" class="filter-collapsible">
       <div class="form-grid">
-        <div class="field"><label for="f-item-code">Item Code</label><input id="f-item-code" class="input" type="text"></div>
-        <div class="field"><label for="f-model">Model</label><input id="f-model" class="input" type="text"></div>
-        <div class="field"><label for="f-size">Size</label><input id="f-size" class="input" type="text" placeholder="e.g. 603, 1206"></div>
-        <div class="field"><label for="f-material">Material</label><input id="f-material" class="input" type="text"></div>
-        <div class="field"><label for="f-voltage">Voltage</label><input id="f-voltage" class="input" type="text"></div>
-        <div class="field"><label for="f-location">Location / Drawer</label><input id="f-location" class="input" type="text"></div>
-        <div class="field"><label for="f-min-qty">Min Qty</label><input id="f-min-qty" class="input" type="number" min="0" step="1"></div>
-        <div class="field"><label for="f-max-qty">Max Qty</label><input id="f-max-qty" class="input" type="number" min="0" step="1"></div>
-        <div class="field"><label for="f-below">Below Threshold (&lt;)</label><input id="f-below" class="input" type="number" min="0" step="1"></div>
-        <div class="field"><label for="f-sort">Sort By</label>
+        <div class="field"><label for="f-item-code">کد قطعه</label><input id="f-item-code" class="input" type="text"></div>
+        <div class="field"><label for="f-model">مدل</label><input id="f-model" class="input" type="text"></div>
+        <div class="field"><label for="f-size">سایز / پکیج</label><input id="f-size" class="input" type="text" placeholder="مثلاً 603 یا 1206"></div>
+        <div class="field"><label for="f-material">جنس / متریال</label><input id="f-material" class="input" type="text"></div>
+        <div class="field"><label for="f-voltage">ولتاژ</label><input id="f-voltage" class="input" type="text"></div>
+        <div class="field"><label for="f-location">محل نگهداری / کشو</label><input id="f-location" class="input" type="text"></div>
+        <div class="field"><label for="f-min-qty">حداقل موجودی</label><input id="f-min-qty" class="input" type="number" min="0" step="1"></div>
+        <div class="field"><label for="f-max-qty">حداکثر موجودی</label><input id="f-max-qty" class="input" type="number" min="0" step="1"></div>
+        <div class="field"><label for="f-below">کمتر از تعداد (&lt;)</label><input id="f-below" class="input" type="number" min="0" step="1"></div>
+        <div class="field"><label for="f-sort">مرتب‌سازی بر اساس</label>
           <select id="f-sort" class="select">
-            <option value="item_code">Item Code</option>
-            <option value="model">Model</option>
-            <option value="category">Category</option>
-            <option value="location">Location</option>
-            <option value="quantity">Quantity</option>
-            <option value="weighted_avg_cost">Weighted Avg Cost</option>
-            <option value="last_purchase_cost">Last Purchase Cost</option>
-            <option value="created_at">Created Date</option>
+            <option value="item_code">کد قطعه</option>
+            <option value="model">مدل</option>
+            <option value="category">دسته‌بندی</option>
+            <option value="location">محل نگهداری</option>
+            <option value="quantity">موجودی فعلی</option>
+            <option value="weighted_avg_cost">میانگین موزون</option>
+            <option value="last_purchase_cost">آخرین قیمت خرید</option>
+            <option value="created_at">تاریخ ثبت</option>
           </select>
         </div>
-        <div class="field"><label for="f-sort-dir">Direction</label>
+        <div class="field"><label for="f-sort-dir">ترتیب</label>
           <select id="f-sort-dir" class="select">
-            <option value="asc">Ascending</option>
-            <option value="desc">Descending</option>
+            <option value="asc">صعودی</option>
+            <option value="desc">نزولی</option>
           </select>
         </div>
         <div class="field" style="justify-content:flex-end;">
-          <label class="checkbox-row"><input id="f-zero" type="checkbox"><span>Zero stock only</span></label>
+          <label class="checkbox-row"><input id="f-zero" type="checkbox"><span>فقط کالاهای با موجودی صفر</span></label>
         </div>
       </div>
     </div>
 
     <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap;">
-      <button type="button" id="inv-apply-btn" class="btn btn-sm btn-primary">Search &amp; Filter</button>
-      <button type="button" id="inv-reset-btn" class="btn btn-sm">Reset Filters</button>
+      <button type="button" id="inv-apply-btn" class="btn btn-sm btn-primary">جستجو و فیلتر</button>
+      <button type="button" id="inv-reset-btn" class="btn btn-sm">پاک کردن فیلترها</button>
     </div>
   </div>
 
@@ -98,20 +98,20 @@
     <table class="table">
       <thead>
         <tr>
-          <th>Item Code</th>
-          <th>Category</th>
-          <th>Model</th>
-          <th>Size / Mount</th>
-          <th>Voltage / Material</th>
-          <th>Location</th>
-          <th class="text-right">Qty</th>
-          <th class="text-right">WAC</th>
-          <th class="text-right">Last Purchase</th>
-          <th class="text-right">Actions</th>
+          <th>کد قطعه</th>
+          <th>دسته‌بندی</th>
+          <th>مدل</th>
+          <th>سایز / نوع نصب</th>
+          <th>ولتاژ / متریال</th>
+          <th>محل نگهداری</th>
+          <th class="text-right">موجودی</th>
+          <th class="text-right">میانگین موزون (WAC)</th>
+          <th class="text-right">آخرین خرید</th>
+          <th class="text-right">عملیات</th>
         </tr>
       </thead>
       <tbody id="inv-tbody">
-        <tr><td colspan="10" class="empty-state">Loading items...</td></tr>
+        <tr><td colspan="10" class="empty-state">در حال بارگذاری قطعات...</td></tr>
       </tbody>
     </table>
   </div>
@@ -120,29 +120,29 @@
   <div id="inv-pagination" class="pagination"></div>
 </section>
 
-<!-- Categories Tab -->
+<!-- تب دسته‌بندی‌ها -->
 <section id="tab-categories" class="card hidden">
   <div class="card-header">
     <div>
-      <h2 class="card-title">Categories &amp; Subcategories</h2>
-      <p class="text-muted" style="font-size:0.82rem;">PostgreSQL enforces hierarchy integrity and prevents cycles or deleting used categories</p>
+      <h2 class="card-title">دسته‌بندی‌ها و زیردسته‌ها</h2>
+      <p class="text-muted" style="font-size:0.82rem;">ساختار سلسله‌مراتبی و جلوگیری از ایجاد حلقه و حذف دسته‌های دارای قطعه توسط PostgreSQL کنترل می‌شود</p>
     </div>
-    <button type="button" id="btn-cat-add-inline" class="btn btn-sm btn-primary">+ New Category</button>
+    <button type="button" id="btn-cat-add-inline" class="btn btn-sm btn-primary">+ دسته‌بندی جدید</button>
   </div>
   <div class="table-wrap">
     <table class="table">
       <thead>
         <tr>
-          <th>Category Path</th>
-          <th>Parent</th>
-          <th class="text-right">Direct Items</th>
-          <th class="text-right">Total Items</th>
-          <th>Description</th>
-          <th class="text-right">Actions</th>
+          <th>مسیر دسته‌بندی</th>
+          <th>دسته والد</th>
+          <th class="text-right">اقلام مستقیم</th>
+          <th class="text-right">کل اقلام زیرمجموعه</th>
+          <th>توضیحات</th>
+          <th class="text-right">عملیات</th>
         </tr>
       </thead>
       <tbody id="cat-tbody">
-        <tr><td colspan="6" class="empty-state">Loading categories...</td></tr>
+        <tr><td colspan="6" class="empty-state">در حال بارگذاری دسته‌بندی‌ها...</td></tr>
       </tbody>
     </table>
   </div>

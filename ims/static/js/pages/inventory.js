@@ -30,7 +30,7 @@ async function refreshCategories() {
 function renderCategoryTable() {
   const tbody = document.getElementById("cat-tbody");
   if (!allCategories.length) {
-    tbody.innerHTML = `<tr><td colspan="6" class="empty-state">No categories created yet. Import an Excel file or add one manually.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="6" class="empty-state">هنوز هیچ دسته‌بندی ثبت نشده است. فایل اکسل را وارد کنید یا به صورت دستی دسته‌بندی بسازید.</td></tr>`;
     return;
   }
 
@@ -41,14 +41,14 @@ function renderCategoryTable() {
       return `
       <tr>
         <td>${indent}${prefix}<strong>${escapeHtml(c.name)}</strong></td>
-        <td class="text-secondary">${escapeHtml(c.parent_name || "— (Main)")}</td>
+        <td class="text-secondary">${escapeHtml(c.parent_name || "— (دسته اصلی)")}</td>
         <td class="text-right num">${fmtQty(c.direct_item_count)}</td>
         <td class="text-right num">${fmtQty(c.subtree_item_count)}</td>
         <td class="text-secondary">${escapeHtml(c.description || "—")}</td>
         <td class="text-right" style="white-space:nowrap;">
-          <button type="button" class="btn btn-sm" data-cat-add-sub="${c.id}">+ Sub</button>
-          <button type="button" class="btn btn-sm" data-cat-edit="${c.id}">Edit</button>
-          <button type="button" class="btn btn-sm" data-cat-del="${c.id}">Delete</button>
+          <button type="button" class="btn btn-sm" data-cat-add-sub="${c.id}">+ زیردسته</button>
+          <button type="button" class="btn btn-sm" data-cat-edit="${c.id}">ویرایش</button>
+          <button type="button" class="btn btn-sm" data-cat-del="${c.id}">حذف</button>
         </td>
       </tr>`;
     })
@@ -68,10 +68,10 @@ function renderCategoryTable() {
 
 async function deleteCategory(id) {
   const cat = allCategories.find((x) => x.id === id);
-  if (!confirm(`Delete category "${cat ? cat.full_path : id}"?`)) return;
+  if (!confirm(`آیا از حذف دسته‌بندی "${cat ? cat.full_path : id}" مطمئن هستید؟`)) return;
   try {
     await apiFetch(`/api/categories/${id}`, { method: "DELETE" });
-    toast("Category deleted.", "success");
+    toast("دسته‌بندی حذف شد.", "success");
     await refreshCategories();
     await loadItems(currentPage);
   } catch (err) {
@@ -82,7 +82,7 @@ async function deleteCategory(id) {
 function openCategoryModal(existing = null, defaultParentId = null) {
   const selectedParent = existing ? existing.parent_id : defaultParentId;
   const parentOptions = [
-    `<option value="">None (Main / Top-Level Category)</option>`,
+    `<option value="">بدون والد (دسته‌بندی اصلی)</option>`,
     ...allCategories
       .filter((c) => !existing || c.id !== existing.id)
       .map(
@@ -94,26 +94,26 @@ function openCategoryModal(existing = null, defaultParentId = null) {
   ].join("");
 
   const modal = openModal({
-    title: existing ? "Edit Category" : "New Category",
+    title: existing ? "ویرایش دسته‌بندی" : "دسته‌بندی جدید",
     bodyHtml: `
       <form id="cat-modal-form" style="display:flex;flex-direction:column;gap:12px;">
         <div class="field">
-          <label for="m-cat-name">Category Name *</label>
+          <label for="m-cat-name">نام دسته‌بندی *</label>
           <input id="m-cat-name" class="input" required maxlength="100" value="${escapeHtml(existing ? existing.name : "")}">
         </div>
         <div class="field">
-          <label for="m-cat-parent">Parent Category</label>
+          <label for="m-cat-parent">دسته والد</label>
           <select id="m-cat-parent" class="select">${parentOptions}</select>
         </div>
         <div class="field">
-          <label for="m-cat-desc">Description</label>
+          <label for="m-cat-desc">توضیحات</label>
           <textarea id="m-cat-desc" class="textarea">${escapeHtml(existing ? existing.description || "" : "")}</textarea>
         </div>
       </form>
     `,
     footerHtml: `
-      <button type="button" class="btn" data-modal-close>Cancel</button>
-      <button type="submit" form="cat-modal-form" class="btn btn-primary">Save Category</button>
+      <button type="button" class="btn" data-modal-close>انصراف</button>
+      <button type="submit" form="cat-modal-form" class="btn btn-primary">ذخیره دسته‌بندی</button>
     `,
   });
 
@@ -127,10 +127,10 @@ function openCategoryModal(existing = null, defaultParentId = null) {
     try {
       if (existing) {
         await apiFetch(`/api/categories/${existing.id}`, { method: "PUT", body: payload });
-        toast("Category updated.", "success");
+        toast("دسته‌بندی به‌روزرسانی شد.", "success");
       } else {
         await apiFetch("/api/categories", { method: "POST", body: payload });
-        toast("Category created.", "success");
+        toast("دسته‌بندی ایجاد شد.", "success");
       }
       closeModal();
       await refreshCategories();
@@ -143,7 +143,7 @@ function openCategoryModal(existing = null, defaultParentId = null) {
 
 function openItemModal(existing = null) {
   if (!allCategories.length) {
-    toast("Create at least one category before adding items.", "warning");
+    toast("پیش از افزودن قطعه، حداقل یک دسته‌بندی ایجاد کنید.", "warning");
     openCategoryModal();
     return;
   }
@@ -158,62 +158,62 @@ function openItemModal(existing = null) {
     .join("");
 
   const modal = openModal({
-    title: existing ? `Edit Item: ${existing.item_code}` : "Add New Component",
+    title: existing ? `ویرایش قطعه: ${existing.item_code}` : "افزودن قطعه جدید",
     large: true,
     bodyHtml: `
       <div class="alert alert-info" style="margin-bottom:12px;">
         ${
           existing
-            ? "Editing updates component specifications only. Stock quantities and costs can only change through transactions."
-            : "Creating a new item initializes an empty inventory record (quantity 0) via PostgreSQL trigger. Record stock via New Transaction or Excel Import."
+            ? "ویرایش فقط مشخصات فنی قطعه را به‌روزرسانی می‌کند. تغییر موجودی و قیمت تنها از طریق تراکنش‌ها انجام می‌شود."
+            : "با ثبت قطعه جدید، ردیف موجودی خالی (تعداد ۰) به صورت خودکار توسط تریگر PostgreSQL ایجاد می‌شود. افزایش موجودی از بخش ثبت تراکنش یا ورود اکسل انجام می‌شود."
         }
       </div>
       <form id="item-modal-form" class="form-grid">
         <div class="field">
-          <label for="m-item-code">Item Code *</label>
-          <input id="m-item-code" class="input" required maxlength="80" value="${escapeHtml(existing ? existing.item_code : "")}">
+          <label for="m-item-code">کد قطعه *</label>
+          <input id="m-item-code" class="input ltr" required maxlength="80" value="${escapeHtml(existing ? existing.item_code : "")}">
         </div>
         <div class="field">
-          <label for="m-item-cat">Category / Subcategory *</label>
+          <label for="m-item-cat">دسته‌بندی / زیردسته *</label>
           <select id="m-item-cat" class="select" required>${catOptions}</select>
         </div>
         <div class="field">
-          <label for="m-item-model">Model *</label>
+          <label for="m-item-model">مدل *</label>
           <input id="m-item-model" class="input" required maxlength="150" value="${escapeHtml(existing ? existing.model : "")}">
         </div>
         <div class="field">
-          <label for="m-item-location">Location / Drawer *</label>
+          <label for="m-item-location">محل نگهداری / کشو *</label>
           <input id="m-item-location" class="input" required maxlength="150" value="${escapeHtml(existing ? existing.location : "")}">
         </div>
         <div class="field">
-          <label for="m-item-size">Size / Package</label>
+          <label for="m-item-size">سایز / پکیج</label>
           <input id="m-item-size" class="input" maxlength="50" value="${escapeHtml(existing ? existing.size || "" : "")}">
         </div>
         <div class="field">
-          <label for="m-item-mount">Mounting Type</label>
+          <label for="m-item-mount">نوع نصب</label>
           <select id="m-item-mount" class="select">
-            <option value="">Unspecified</option>
+            <option value="">نامشخص</option>
             <option value="SMD" ${existing && existing.mounting_type === "SMD" ? "selected" : ""}>SMD</option>
             <option value="DIP" ${existing && existing.mounting_type === "DIP" ? "selected" : ""}>DIP</option>
           </select>
         </div>
         <div class="field">
-          <label for="m-item-voltage">Voltage</label>
+          <label for="m-item-voltage">ولتاژ</label>
           <input id="m-item-voltage" class="input" maxlength="80" value="${escapeHtml(existing ? existing.voltage || "" : "")}">
         </div>
         <div class="field">
-          <label for="m-item-material">Material</label>
+          <label for="m-item-material">جنس / متریال</label>
           <input id="m-item-material" class="input" maxlength="100" value="${escapeHtml(existing ? existing.material || "" : "")}">
         </div>
         <div class="field" style="grid-column: 1 / -1;">
-          <label for="m-item-desc">Description / Notes</label>
+          <label for="m-item-desc">توضیحات</label>
           <textarea id="m-item-desc" class="textarea">${escapeHtml(existing ? existing.description || "" : "")}</textarea>
         </div>
       </form>
     `,
     footerHtml: `
-      <button type="button" class="btn" data-modal-close>Cancel</button>
-      <button type="submit" form="item-modal-form" class="btn btn-primary">${existing ? "Save Changes" : "Create Item"}</button>
+      <button type="button" class="btn" data-modal-close>انصراف</button>
+      <button type="submit" form="item-modal-form" class="btn btn-primary">${existing ? "ذخیره تغییرات" : "ثبت قطعه"}</button>
     `,
   });
 
@@ -234,10 +234,10 @@ function openItemModal(existing = null) {
     try {
       if (existing) {
         await apiFetch(`/api/items/${existing.id}`, { method: "PUT", body: payload });
-        toast("Item updated.", "success");
+        toast("مشخصات قطعه به‌روزرسانی شد.", "success");
       } else {
         await apiFetch("/api/items", { method: "POST", body: payload });
-        toast("Item created with empty inventory record.", "success");
+        toast("قطعه جدید با موجودی اولیه صفر ایجاد شد.", "success");
       }
       closeModal();
       await loadItems(existing ? currentPage : 1);
@@ -276,7 +276,7 @@ async function loadItems(page = 1) {
   currentPage = page;
   const tbody = document.getElementById("inv-tbody");
   const mobile = document.getElementById("inv-mobile");
-  tbody.innerHTML = `<tr><td colspan="10" class="empty-state">Loading...</td></tr>`;
+  tbody.innerHTML = `<tr><td colspan="10" class="empty-state">در حال بارگذاری...</td></tr>`;
   mobile.innerHTML = "";
 
   try {
@@ -284,8 +284,8 @@ async function loadItems(page = 1) {
     const items = data.items || [];
 
     if (!items.length) {
-      tbody.innerHTML = `<tr><td colspan="10" class="empty-state">No components match your criteria.</td></tr>`;
-      mobile.innerHTML = `<div class="empty-state">No components match your criteria.</div>`;
+      tbody.innerHTML = `<tr><td colspan="10" class="empty-state">هیچ قطعه‌ای مطابق فیلترها یافت نشد.</td></tr>`;
+      mobile.innerHTML = `<div class="empty-state">هیچ قطعه‌ای مطابق فیلترها یافت نشد.</div>`;
     } else {
       tbody.innerHTML = items
         .map(
@@ -298,10 +298,10 @@ async function loadItems(page = 1) {
           <td>${escapeHtml(it.voltage || "—")} / ${escapeHtml(it.material || "—")}</td>
           <td>${escapeHtml(it.location)}</td>
           <td class="text-right">${stockBadge(it.quantity)}</td>
-          <td class="text-right num">${fmtCost(it.weighted_avg_cost, "Unknown")}</td>
-          <td class="text-right num">${fmtCost(it.last_purchase_cost, "Unknown")}</td>
+          <td class="text-right num">${fmtCost(it.weighted_avg_cost, "نامشخص")}</td>
+          <td class="text-right num">${fmtCost(it.last_purchase_cost, "نامشخص")}</td>
           <td class="text-right" style="white-space:nowrap;">
-            <button type="button" class="btn btn-sm" data-edit-item="${it.id}">Edit</button>
+            <button type="button" class="btn btn-sm" data-edit-item="${it.id}">ویرایش</button>
           </td>
         </tr>`
         )
@@ -319,14 +319,14 @@ async function loadItems(page = 1) {
             ${stockBadge(it.quantity)}
           </div>
           <div class="mobile-item-meta">
-            <div><span class="text-muted">Loc:</span> ${escapeHtml(it.location)}</div>
-            <div><span class="text-muted">Mount/Size:</span> ${escapeHtml(it.mounting_type || "—")} / ${escapeHtml(it.size || "—")}</div>
-            <div><span class="text-muted">WAC:</span> <span class="num">${fmtCost(it.weighted_avg_cost, "Unknown")}</span></div>
-            <div><span class="text-muted">LPC:</span> <span class="num">${fmtCost(it.last_purchase_cost, "Unknown")}</span></div>
+            <div><span class="text-muted">محل:</span> ${escapeHtml(it.location)}</div>
+            <div><span class="text-muted">نصب/سایز:</span> ${escapeHtml(it.mounting_type || "—")} / ${escapeHtml(it.size || "—")}</div>
+            <div><span class="text-muted">میانگین موزون:</span> <span class="num">${fmtCost(it.weighted_avg_cost, "نامشخص")}</span></div>
+            <div><span class="text-muted">آخرین خرید:</span> <span class="num">${fmtCost(it.last_purchase_cost, "نامشخص")}</span></div>
           </div>
           <div style="display:flex;gap:8px;justify-content:flex-end;">
-            <button type="button" class="btn btn-sm" data-view-item="${it.id}">Details</button>
-            <button type="button" class="btn btn-sm" data-edit-item="${it.id}">Edit</button>
+            <button type="button" class="btn btn-sm" data-view-item="${it.id}">جزئیات</button>
+            <button type="button" class="btn btn-sm" data-edit-item="${it.id}">ویرایش</button>
           </div>
         </div>`
         )
@@ -366,7 +366,6 @@ async function loadItems(page = 1) {
 }
 
 document.addEventListener("DOMContentLoaded", async () => {
-  // Tabs
   document.querySelectorAll(".tab-btn").forEach((btn) => {
     btn.addEventListener("click", () => {
       document.querySelectorAll(".tab-btn").forEach((b) => b.classList.remove("active"));

@@ -1,87 +1,87 @@
 {% extends "base.html" %}
-{% block title %}Dashboard — Component IMS{% endblock %}
-{% block mobile_title %}Dashboard{% endblock %}
+{% block title %}داشبورد — سامانه مدیریت انبار{% endblock %}
+{% block mobile_title %}داشبورد انبار{% endblock %}
 
 {% block content %}
 <div class="page-header">
   <div>
-    <h1 class="page-title">Inventory Dashboard</h1>
-    <p class="page-subtitle">Real-time component overview, valuations, and recent stock movements</p>
+    <h1 class="page-title">داشبورد مدیریت انبار</h1>
+    <p class="page-subtitle">نمای کلی موجودی قطعات، ارزش‌گذاری انبار و آخرین گردش‌های کالا</p>
   </div>
 </div>
 
-<!-- Quick Access Operations -->
+<!-- دسترسی سریع عملیات -->
 <div class="quick-actions">
   <a class="quick-btn" href="{{ url_for('pages.new_transaction') }}">
     <span class="quick-icon">+</span>
-    <span>New Transaction</span>
+    <span>ثبت تراکنش جدید</span>
   </a>
   <a class="quick-btn" href="{{ url_for('pages.excel') }}#import">
     <span class="quick-icon">↑</span>
-    <span>Initial Inventory Import</span>
+    <span>ورود موجودی اولیه (اکسل)</span>
   </a>
   <a class="quick-btn" href="{{ url_for('pages.bom') }}">
     <span class="quick-icon">✓</span>
-    <span>BOM Calculator</span>
+    <span>محاسبه‌گر هزینه BOM</span>
   </a>
   <a class="quick-btn" href="{{ url_for('pages.excel') }}#export">
     <span class="quick-icon">↓</span>
-    <span>Export Reports</span>
+    <span>خروجی گزارش اکسل</span>
   </a>
 </div>
 
-<!-- KPI Cards -->
+<!-- کارت‌های شاخص -->
 <div id="dashboard-kpis" class="grid grid-kpi" style="margin-bottom:20px;">
-  <div class="card kpi-card"><span class="kpi-label">Loading metrics...</span></div>
+  <div class="card kpi-card"><span class="kpi-label">در حال بارگذاری شاخص‌ها...</span></div>
 </div>
 
-<!-- Main Inventory Search & Table -->
+<!-- جدول اصلی موجودی -->
 <section class="card" style="margin-bottom:20px;">
   <div class="card-header">
     <div>
-      <h2 class="card-title">Current Inventory</h2>
-      <p class="text-muted" style="font-size:0.82rem;">Click any component to inspect full specifications and transaction history</p>
+      <h2 class="card-title">موجودی فعلی انبار</h2>
+      <p class="text-muted" style="font-size:0.82rem;">برای مشاهده مشخصات کامل و تاریخچه گردش هر قطعه، روی ردیف آن کلیک کنید</p>
     </div>
-    <button type="button" id="dash-filter-toggle" class="btn btn-sm filter-toggle-mobile">Filters</button>
+    <button type="button" id="dash-filter-toggle" class="btn btn-sm filter-toggle-mobile">فیلترها</button>
   </div>
 
   <div class="card-body" style="border-bottom:1px solid var(--border-color);">
     <div id="dash-filters" class="filter-collapsible">
       <div class="form-grid">
         <div class="field">
-          <label for="d-search">Search</label>
-          <input id="d-search" class="input" type="search" placeholder="Code, model, location, size...">
+          <label for="d-search">جستجو</label>
+          <input id="d-search" class="input" type="search" placeholder="کد قطعه، مدل، محل نگهداری، سایز...">
         </div>
         <div class="field">
-          <label for="d-parent-cat">Category</label>
+          <label for="d-parent-cat">دسته‌بندی اصلی</label>
           <select id="d-parent-cat" class="select"></select>
         </div>
         <div class="field">
-          <label for="d-sub-cat">Subcategory</label>
+          <label for="d-sub-cat">زیردسته</label>
           <select id="d-sub-cat" class="select"></select>
         </div>
         <div class="field">
-          <label for="d-mounting">Mounting</label>
+          <label for="d-mounting">نوع نصب</label>
           <select id="d-mounting" class="select">
-            <option value="">All</option>
+            <option value="">همه</option>
             <option value="SMD">SMD</option>
             <option value="DIP">DIP</option>
           </select>
         </div>
         <div class="field">
-          <label for="d-location">Location / Drawer</label>
-          <input id="d-location" class="input" type="text" placeholder="e.g. E1">
+          <label for="d-location">محل نگهداری / کشو</label>
+          <input id="d-location" class="input" type="text" placeholder="مثلاً E1">
         </div>
         <div class="field" style="justify-content:flex-end;">
           <label class="checkbox-row">
             <input id="d-zero" type="checkbox">
-            <span>Zero stock only</span>
+            <span>فقط کالاهای ناموجود (صفر)</span>
           </label>
         </div>
       </div>
       <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;">
-        <button type="button" id="d-apply-btn" class="btn btn-sm btn-primary">Apply</button>
-        <button type="button" id="d-reset-btn" class="btn btn-sm">Reset</button>
+        <button type="button" id="d-apply-btn" class="btn btn-sm btn-primary">اعمال فیلتر</button>
+        <button type="button" id="d-reset-btn" class="btn btn-sm">پاک کردن</button>
       </div>
     </div>
   </div>
@@ -90,19 +90,19 @@
     <table class="table">
       <thead>
         <tr>
-          <th>Item Code</th>
-          <th>Category</th>
-          <th>Model</th>
-          <th>Size</th>
-          <th>Mounting</th>
-          <th>Location</th>
-          <th class="text-right">Qty</th>
-          <th class="text-right">Weighted Avg Cost</th>
-          <th class="text-right">Last Purchase Cost</th>
+          <th>کد قطعه</th>
+          <th>دسته‌بندی</th>
+          <th>مدل</th>
+          <th>سایز</th>
+          <th>نوع نصب</th>
+          <th>محل نگهداری</th>
+          <th class="text-right">موجودی فعلی</th>
+          <th class="text-right">میانگین موزون (WAC)</th>
+          <th class="text-right">آخرین قیمت خرید</th>
         </tr>
       </thead>
       <tbody id="dash-items-tbody">
-        <tr><td colspan="9" class="empty-state">Loading inventory...</td></tr>
+        <tr><td colspan="9" class="empty-state">در حال بارگذاری موجودی...</td></tr>
       </tbody>
     </table>
   </div>
@@ -111,25 +111,25 @@
   <div id="dash-pagination" class="pagination"></div>
 </section>
 
-<!-- Recent Movements & Recently Added Items -->
+<!-- آخرین تراکنش‌ها و قطعات جدید -->
 <div class="grid grid-2">
   <section class="card">
     <div class="card-header">
-      <h2 class="card-title">Recent Inventory Movements</h2>
-      <a class="btn btn-sm" href="{{ url_for('pages.transactions') }}">View All</a>
+      <h2 class="card-title">آخرین گردش‌های انبار</h2>
+      <a class="btn btn-sm" href="{{ url_for('pages.transactions') }}">مشاهده همه</a>
     </div>
     <div id="dash-recent-tx" class="card-body">
-      <div class="empty-state">Loading movements...</div>
+      <div class="empty-state">در حال بارگذاری گردش‌ها...</div>
     </div>
   </section>
 
   <section class="card">
     <div class="card-header">
-      <h2 class="card-title">Recently Added Items</h2>
-      <a class="btn btn-sm" href="{{ url_for('pages.inventory') }}">Manage Items</a>
+      <h2 class="card-title">قطعات اخیراً اضافه‌شده</h2>
+      <a class="btn btn-sm" href="{{ url_for('pages.inventory') }}">مدیریت قطعات</a>
     </div>
     <div id="dash-recent-items" class="card-body">
-      <div class="empty-state">Loading items...</div>
+      <div class="empty-state">در حال بارگذاری قطعات...</div>
     </div>
   </section>
 </div>

@@ -5,6 +5,13 @@ let currentUploadId = null;
 let lastAnalysis = null;
 let currentAvailFilter = "ALL";
 
+const AVAIL_STATUS_FA = {
+  Available: "موجود",
+  Insufficient: "کمبود موجودی",
+  "Out of Stock": "ناموجود",
+  Unknown: "ناشناخته",
+};
+
 function populateMappingSelects(info) {
   const sheetSel = document.getElementById("bom-sheet");
   sheetSel.innerHTML = (info.sheet_names || [])
@@ -17,7 +24,7 @@ function populateMappingSelects(info) {
   const headers = info.headers || [];
   const fillCol = (selectId, selectedVal, optional = false) => {
     const sel = document.getElementById(selectId);
-    sel.innerHTML = optional ? `<option value="">(None)</option>` : `<option value="">Select column...</option>`;
+    sel.innerHTML = optional ? `<option value="">(ندارد)</option>` : `<option value="">انتخاب ستون...</option>`;
     headers.forEach((h) => {
       const opt = document.createElement("option");
       opt.value = h;
@@ -51,7 +58,7 @@ function availStatusBadge(status) {
     "Out of Stock": "badge-danger",
     Unknown: "badge-danger",
   }[status] || "badge-neutral";
-  return `<span class="badge ${cls}">${escapeHtml(status)}</span>`;
+  return `<span class="badge ${cls}">${escapeHtml(AVAIL_STATUS_FA[status] || status)}</span>`;
 }
 
 function renderSummary(analysis) {
@@ -60,30 +67,30 @@ function renderSummary(analysis) {
   const container = document.getElementById("bom-summary-kpis");
 
   const wacHtml = c.wac_complete
-    ? `<span class="kpi-value">${fmtCost(c.wac_total)}</span><span class="kpi-note text-success">Complete cost across all components</span>`
-    : `<span class="kpi-value text-warning">Incomplete</span><span class="kpi-note">Known subtotal: ${fmtCost(c.wac_known_subtotal)} (${fmtQty(c.wac_missing_count)} item(s) missing cost or unknown)</span>`;
+    ? `<span class="kpi-value">${fmtCost(c.wac_total)}</span><span class="kpi-note text-success">محاسبه کامل برای همه اقلام</span>`
+    : `<span class="kpi-value text-warning">ناقص / نامشخص</span><span class="kpi-note">جمع اقلام قیمت‌دار: ${fmtCost(c.wac_known_subtotal)} (${fmtQty(c.wac_missing_count)} قطعه بدون قیمت یا ناشناخته)</span>`;
 
   const lpcHtml = c.lpc_complete
-    ? `<span class="kpi-value">${fmtCost(c.lpc_total)}</span><span class="kpi-note text-success">Complete cost across all components</span>`
-    : `<span class="kpi-value text-warning">Incomplete</span><span class="kpi-note">Known subtotal: ${fmtCost(c.lpc_known_subtotal)} (${fmtQty(c.lpc_missing_count)} item(s) missing cost or unknown)</span>`;
+    ? `<span class="kpi-value">${fmtCost(c.lpc_total)}</span><span class="kpi-note text-success">محاسبه کامل برای همه اقلام</span>`
+    : `<span class="kpi-value text-warning">ناقص / نامشخص</span><span class="kpi-note">جمع اقلام قیمت‌دار: ${fmtCost(c.lpc_known_subtotal)} (${fmtQty(c.lpc_missing_count)} قطعه بدون قیمت یا ناشناخته)</span>`;
 
   container.innerHTML = `
     <div class="card kpi-card">
-      <span class="kpi-label">Unique Components</span>
+      <span class="kpi-label">اقلام متمایز BOM</span>
       <span class="kpi-value">${fmtQty(a.total_unique_items)}</span>
-      <span class="kpi-note">${fmtQty(a.merged_duplicate_rows)} duplicate row(s) merged</span>
+      <span class="kpi-note">${fmtQty(a.merged_duplicate_rows)} ردیف تکراری تجمیع شد</span>
     </div>
     <div class="card kpi-card">
-      <span class="kpi-label">Availability Breakdown</span>
-      <span class="kpi-value text-success">${fmtQty(a.available)} <span class="text-muted" style="font-size:0.9rem;">/ ${fmtQty(a.total_unique_items)}</span></span>
-      <span class="kpi-note">Insuff: ${fmtQty(a.insufficient)} • Out: ${fmtQty(a.out_of_stock)} • Unknown: ${fmtQty(a.unknown)}</span>
+      <span class="kpi-label">وضعیت موجودی اقلام</span>
+      <span class="kpi-value text-success">${fmtQty(a.available)} <span class="text-muted" style="font-size:0.9rem;">از ${fmtQty(a.total_unique_items)}</span></span>
+      <span class="kpi-note">کمبود: ${fmtQty(a.insufficient)} • ناموجود: ${fmtQty(a.out_of_stock)} • ناشناخته: ${fmtQty(a.unknown)}</span>
     </div>
-    <div class="card kpi-card">
-      <span class="kpi-label">Total BOM (Weighted Avg)</span>
+    <div class="card kpi-card kpi-card-accent">
+      <span class="kpi-label">هزینه کل BOM (میانگین موزون)</span>
       ${wacHtml}
     </div>
-    <div class="card kpi-card">
-      <span class="kpi-label">Total BOM (Last Purchase)</span>
+    <div class="card kpi-card kpi-card-accent">
+      <span class="kpi-label">هزینه کل BOM (آخرین خرید)</span>
       ${lpcHtml}
     </div>
   `;
@@ -96,7 +103,7 @@ function renderAvailabilityTable() {
   );
   const tbody = document.getElementById("bom-avail-tbody");
   if (!rows.length) {
-    tbody.innerHTML = `<tr><td colspan="8" class="empty-state">No components match this status filter.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="8" class="empty-state">هیچ قطعه‌ای با این وضعیت یافت نشد.</td></tr>`;
     return;
   }
 
@@ -109,7 +116,7 @@ function renderAvailabilityTable() {
       <td>${escapeHtml(r.category_name ? (r.subcategory_name ? `${r.category_name} > ${r.subcategory_name}` : r.category_name) : "—")}</td>
       <td>${escapeHtml(r.location || "—")}</td>
       <td class="text-right num"><strong>${fmtQty(r.required_qty)}</strong></td>
-      <td class="text-right num">${r.available_qty !== null ? fmtQty(r.available_qty) : "N/A"}</td>
+      <td class="text-right num">${r.available_qty !== null ? fmtQty(r.available_qty) : "ندارد"}</td>
       <td class="text-right num ${r.shortage > 0 ? "text-danger" : ""}">${r.shortage > 0 ? fmtQty(r.shortage) : "0"}</td>
       <td>${availStatusBadge(r.status)}</td>
     </tr>`
@@ -146,7 +153,7 @@ function renderCostTable(analysis) {
   const cs = analysis.cost_summary;
 
   if (!rows.length) {
-    tbody.innerHTML = `<tr><td colspan="7" class="empty-state">No valid BOM components to calculate.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="7" class="empty-state">ردیف معتبری برای محاسبه هزینه یافت نشد.</td></tr>`;
     tfoot.innerHTML = "";
     return;
   }
@@ -156,38 +163,38 @@ function renderCostTable(analysis) {
       (r) => `
     <tr>
       <td class="mono"><strong>${escapeHtml(r.item_code)}</strong></td>
-      <td>${escapeHtml(r.item_name)}${r.is_unknown ? ` <span class="badge badge-danger">Unknown Item</span>` : ""}</td>
+      <td>${escapeHtml(r.item_name)}${r.is_unknown ? ` <span class="badge badge-danger">کد ناشناخته</span>` : ""}</td>
       <td class="text-right num"><strong>${fmtQty(r.required_qty)}</strong></td>
-      <td class="text-right num">${r.wac_missing ? `<span class="text-warning">Unavailable</span>` : fmtCost(r.weighted_avg_cost)}</td>
-      <td class="text-right num">${r.wac_missing ? `<span class="text-warning">Unavailable</span>` : fmtCost(r.wac_line_total)}</td>
-      <td class="text-right num">${r.lpc_missing ? `<span class="text-warning">Unavailable</span>` : fmtCost(r.last_purchase_cost)}</td>
-      <td class="text-right num">${r.lpc_missing ? `<span class="text-warning">Unavailable</span>` : fmtCost(r.lpc_line_total)}</td>
+      <td class="text-right num">${r.wac_missing ? `<span class="text-warning">نامشخص</span>` : fmtCost(r.weighted_avg_cost)}</td>
+      <td class="text-right num">${r.wac_missing ? `<span class="text-warning">نامشخص</span>` : fmtCost(r.wac_line_total)}</td>
+      <td class="text-right num">${r.lpc_missing ? `<span class="text-warning">نامشخص</span>` : fmtCost(r.last_purchase_cost)}</td>
+      <td class="text-right num">${r.lpc_missing ? `<span class="text-warning">نامشخص</span>` : fmtCost(r.lpc_line_total)}</td>
     </tr>`
     )
     .join("");
 
   tfoot.innerHTML = `
     <tr style="background:var(--bg-subtle);font-weight:700;">
-      <td colspan="4">Grand Total (Weighted Average Cost)</td>
+      <td colspan="4">جمع کل BOM (بر مبنای میانگین موزون WAC)</td>
       <td class="text-right num">
         ${
           cs.wac_complete
             ? fmtCost(cs.wac_total)
-            : `<span class="text-warning">Incomplete (known: ${fmtCost(cs.wac_known_subtotal)})</span>`
+            : `<span class="text-warning">ناقص (جمع شناخته‌شده: ${fmtCost(cs.wac_known_subtotal)})</span>`
         }
       </td>
       <td></td>
       <td></td>
     </tr>
     <tr style="background:var(--bg-subtle);font-weight:700;">
-      <td colspan="4">Grand Total (Last Purchase Cost)</td>
+      <td colspan="4">جمع کل BOM (بر مبنای آخرین قیمت خرید)</td>
       <td></td>
       <td></td>
       <td class="text-right num">
         ${
           cs.lpc_complete
             ? fmtCost(cs.lpc_total)
-            : `<span class="text-warning">Incomplete (known: ${fmtCost(cs.lpc_known_subtotal)})</span>`
+            : `<span class="text-warning">ناقص (جمع شناخته‌شده: ${fmtCost(cs.lpc_known_subtotal)})</span>`
         }
       </td>
     </tr>
@@ -203,7 +210,7 @@ async function handleFileUpload(file) {
     currentUploadId = info.upload_id;
     populateMappingSelects(info);
     document.getElementById("bom-mapping-panel").classList.remove("hidden");
-    toast(`Loaded ${file.name} (${info.total_data_rows} rows). Review mapping and click Analyze.`, "success");
+    toast(`فایل ${file.name} (${info.total_data_rows} ردیف) بارگذاری شد. تطبیق ستون‌ها را بررسی و محاسبه را اجرا کنید.`, "success");
   } catch (err) {
     toast(err.message, "error");
   }
@@ -271,7 +278,7 @@ document.addEventListener("DOMContentLoaded", () => {
         },
         "bom_cost_report.xlsx"
       );
-      toast("BOM Excel report downloaded.", "success");
+      toast("گزارش اکسل BOM دانلود شد.", "success");
     } catch (err) {
       toast(err.message, "error");
     }

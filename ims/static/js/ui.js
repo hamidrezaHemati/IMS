@@ -10,12 +10,56 @@ export function escapeHtml(str) {
     .replace(/'/g, "&#39;");
 }
 
+export function translateServerError(msg) {
+  if (!msg) return "خطای نامشخص رخ داد.";
+  const text = String(msg);
+
+  const insuffMatch = text.match(/Insufficient stock for item_id (\d+)\. Available: (\d+), requested: (\d+)/i);
+  if (insuffMatch) {
+    return `موجودی کافی نیست (موجود: ${insuffMatch[2]}، درخواستی: ${insuffMatch[3]}).`;
+  }
+  if (/Invalid username or password/i.test(text)) {
+    return "نام کاربری یا رمز عبور اشتباه است.";
+  }
+  if (/Current password is incorrect/i.test(text)) {
+    return "رمز عبور فعلی نادرست است.";
+  }
+  if (/username is already taken/i.test(text)) {
+    return "این نام کاربری قبلاً ثبت شده است.";
+  }
+  if (/item with this item code already exists/i.test(text)) {
+    return "قطعه دیگری با این کد قطعه قبلاً ثبت شده است.";
+  }
+  if (/Cannot delete this category because it still has subcategories/i.test(text)) {
+    return "امکان حذف این دسته‌بندی وجود ندارد زیرا دارای زیردسته است.";
+  }
+  if (/Cannot delete or change this category because items are assigned/i.test(text)) {
+    return "امکان حذف یا تغییر این دسته‌بندی وجود ندارد زیرا قطعاتی به آن اختصاص یافته‌اند.";
+  }
+  if (/would create a cycle/i.test(text) || /cannot be its own parent/i.test(text)) {
+    return "سلسله‌مراتب دسته‌بندی نامعتبر است: این تغییر باعث ایجاد حلقه می‌شود.";
+  }
+  if (/already exists under the selected parent/i.test(text)) {
+    return "دسته‌بندی با این نام در همین سطح از قبل وجود دارد.";
+  }
+  if (/Unit price is required for PURCHASE_IN/i.test(text)) {
+    return "وارد کردن قیمت واحد برای تراکنش خرید (PURCHASE_IN) الزامی است.";
+  }
+  if (/Price must not be specified for OUT/i.test(text)) {
+    return "برای تراکنش‌های خروج نباید قیمت وارد شود؛ هزینه از میانگین موزون محاسبه می‌شود.";
+  }
+  if (/Only \.xlsx Excel workbooks are supported/i.test(text)) {
+    return "فقط فایل‌های اکسل با پسوند .xlsx پشتیبانی می‌شوند.";
+  }
+  return text;
+}
+
 export function fmtQty(val) {
   if (val === null || val === undefined) return "—";
   return Number(val).toLocaleString("en-US");
 }
 
-export function fmtCost(val, fallback = "Unknown") {
+export function fmtCost(val, fallback = "نامشخص") {
   if (val === null || val === undefined || val === "") return fallback;
   const num = Number(val);
   if (Number.isNaN(num)) return fallback;
@@ -29,13 +73,26 @@ export function fmtDate(iso) {
   if (!iso) return "—";
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return String(iso);
-  return d.toLocaleString(undefined, {
-    year: "numeric",
-    month: "short",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  try {
+    return new Intl.DateTimeFormat("fa-IR", {
+      dateStyle: "medium",
+      timeStyle: "short",
+    }).format(d);
+  } catch {
+    return d.toLocaleString("fa-IR");
+  }
+}
+
+export const TX_TYPE_LABELS = {
+  OPENING: "موجودی اولیه",
+  PURCHASE_IN: "خرید (ورود)",
+  OUT: "خروج کالا",
+  ADJUSTMENT_IN: "تعدیل افزایشی",
+  ADJUSTMENT_OUT: "تعدیل کاهشی",
+};
+
+export function txTypeLabel(txType) {
+  return TX_TYPE_LABELS[txType] || txType;
 }
 
 export function txTypeBadge(txType) {
@@ -47,16 +104,16 @@ export function txTypeBadge(txType) {
     ADJUSTMENT_OUT: "badge-danger",
   };
   const cls = map[txType] || "badge-neutral";
-  return `<span class="badge ${cls}">${escapeHtml(txType)}</span>`;
+  return `<span class="badge ${cls}">${escapeHtml(txTypeLabel(txType))}</span>`;
 }
 
 export function stockBadge(qty) {
   const n = Number(qty || 0);
-  if (n === 0) return `<span class="badge badge-danger num">0 (Out)</span>`;
+  if (n === 0) return `<span class="badge badge-danger num">0 (ناموجود)</span>`;
   return `<span class="badge badge-neutral num">${fmtQty(n)}</span>`;
 }
 
-export function toast(message, type = "info", duration = 3800) {
+export function toast(message, type = "info", duration = 4000) {
   let container = document.getElementById("toast-container");
   if (!container) {
     container = document.createElement("div");
@@ -66,7 +123,7 @@ export function toast(message, type = "info", duration = 3800) {
   }
   const el = document.createElement("div");
   el.className = `toast toast-${type}`;
-  el.innerHTML = `<span>${escapeHtml(message)}</span>`;
+  el.innerHTML = `<span>${escapeHtml(translateServerError(message))}</span>`;
   container.appendChild(el);
   setTimeout(() => {
     el.remove();
@@ -77,14 +134,14 @@ export function renderPagination(container, page, totalPages, total, onPageChang
   if (!container) return;
   container.innerHTML = `
     <span class="text-secondary">
-      Showing page <strong class="num">${page}</strong> of <strong class="num">${totalPages}</strong>
-      (${fmtQty(total)} total records)
+      صفحه <strong class="num">${page}</strong> از <strong class="num">${totalPages}</strong>
+      (مجموع <span class="num">${fmtQty(total)}</span> رکورد)
     </span>
     <div class="pagination-controls">
-      <button class="btn btn-sm" data-page="1" ${page <= 1 ? "disabled" : ""}>First</button>
-      <button class="btn btn-sm" data-page="${page - 1}" ${page <= 1 ? "disabled" : ""}>Prev</button>
-      <button class="btn btn-sm" data-page="${page + 1}" ${page >= totalPages ? "disabled" : ""}>Next</button>
-      <button class="btn btn-sm" data-page="${totalPages}" ${page >= totalPages ? "disabled" : ""}>Last</button>
+      <button class="btn btn-sm" data-page="1" ${page <= 1 ? "disabled" : ""}>اولین</button>
+      <button class="btn btn-sm" data-page="${page - 1}" ${page <= 1 ? "disabled" : ""}>قبلی</button>
+      <button class="btn btn-sm" data-page="${page + 1}" ${page >= totalPages ? "disabled" : ""}>بعدی</button>
+      <button class="btn btn-sm" data-page="${totalPages}" ${page >= totalPages ? "disabled" : ""}>آخرین</button>
     </div>
   `;
   container.querySelectorAll("button[data-page]").forEach((btn) => {
@@ -103,8 +160,8 @@ export function populateCategorySelects(parentSelect, childSelect, categories, i
   const children = categories.filter((c) => c.parent_id !== null);
 
   parentSelect.innerHTML = includeAll
-    ? `<option value="">All Categories</option>`
-    : `<option value="">Select Category...</option>`;
+    ? `<option value="">همه دسته‌بندی‌ها</option>`
+    : `<option value="">انتخاب دسته‌بندی...</option>`;
 
   roots.forEach((cat) => {
     const opt = document.createElement("option");
@@ -121,8 +178,8 @@ export function populateCategorySelects(parentSelect, childSelect, categories, i
       : children;
 
     childSelect.innerHTML = includeAll
-      ? `<option value="">All Subcategories</option>`
-      : `<option value="">None (Use Main Category)</option>`;
+      ? `<option value="">همه زیردسته‌ها</option>`
+      : `<option value="">بدون زیردسته (استفاده از دسته اصلی)</option>`;
 
     filtered.forEach((sub) => {
       const opt = document.createElement("option");
@@ -146,7 +203,7 @@ export function openModal({ title, bodyHtml, footerHtml = "", large = false }) {
     <div class="modal-card ${large ? "modal-lg" : ""}" role="dialog" aria-modal="true">
       <div class="modal-header">
         <h3 class="card-title">${escapeHtml(title)}</h3>
-        <button type="button" class="btn btn-sm btn-ghost" data-modal-close aria-label="Close">✕</button>
+        <button type="button" class="btn btn-sm btn-ghost" data-modal-close aria-label="بستن">✕</button>
       </div>
       <div class="modal-body">${bodyHtml}</div>
       ${footerHtml ? `<div class="modal-footer">${footerHtml}</div>` : ""}
@@ -169,8 +226,8 @@ export function closeModal() {
 
 export async function openItemDetailModal(itemId) {
   const modal = openModal({
-    title: "Component Details",
-    bodyHtml: `<div class="empty-state">Loading component details...</div>`,
+    title: "مشخصات و سوابق قطعه",
+    bodyHtml: `<div class="empty-state">در حال بارگذاری اطلاعات قطعه...</div>`,
     large: true,
   });
 
@@ -189,10 +246,10 @@ export async function openItemDetailModal(itemId) {
         <td class="text-muted">${escapeHtml(fmtDate(t.created_at))}</td>
         <td>${txTypeBadge(t.transaction_type)}</td>
         <td class="text-right num"><strong>${fmtQty(t.quantity)}</strong></td>
-        <td class="text-right num">${fmtQty(t.stock_before)} → <strong>${fmtQty(t.stock_after)}</strong></td>
+        <td class="text-right num ltr">${fmtQty(t.stock_before)} → <strong>${fmtQty(t.stock_after)}</strong></td>
         <td class="text-right num">${fmtCost(t.price, "—")}</td>
-        <td class="text-right num">${fmtCost(t.unit_cost_snapshot, "Unknown")}</td>
-        <td class="text-right num">${fmtCost(t.transaction_cost_snapshot, "Unknown")}</td>
+        <td class="text-right num">${fmtCost(t.unit_cost_snapshot, "نامشخص")}</td>
+        <td class="text-right num">${fmtCost(t.transaction_cost_snapshot, "نامشخص")}</td>
         <td>${escapeHtml(t.user_name)}</td>
         <td class="text-secondary">${escapeHtml(t.description || "—")}</td>
       </tr>
@@ -204,51 +261,51 @@ export async function openItemDetailModal(itemId) {
     body.innerHTML = `
       <div class="spec-grid" style="margin-bottom: 16px;">
         <div class="spec-item">
-          <div class="spec-label">Current Stock</div>
+          <div class="spec-label">موجودی فعلی</div>
           <div class="spec-val num" style="font-size:1.15rem;">${fmtQty(item.quantity)}</div>
         </div>
         <div class="spec-item">
-          <div class="spec-label">Weighted Avg Cost</div>
-          <div class="spec-val num">${fmtCost(item.weighted_avg_cost, "Unknown")}</div>
+          <div class="spec-label">میانگین موزون (WAC)</div>
+          <div class="spec-val num">${fmtCost(item.weighted_avg_cost, "نامشخص")}</div>
         </div>
         <div class="spec-item">
-          <div class="spec-label">Last Purchase Cost</div>
-          <div class="spec-val num">${fmtCost(item.last_purchase_cost, "Unknown")}</div>
+          <div class="spec-label">آخرین قیمت خرید</div>
+          <div class="spec-val num">${fmtCost(item.last_purchase_cost, "نامشخص")}</div>
         </div>
         <div class="spec-item">
-          <div class="spec-label">WAC Total Value</div>
-          <div class="spec-val num">${fmtCost(item.total_wac_value, "Unknown")}</div>
+          <div class="spec-label">ارزش کل (بر مبنای WAC)</div>
+          <div class="spec-val num">${fmtCost(item.total_wac_value, "نامشخص")}</div>
         </div>
         <div class="spec-item">
-          <div class="spec-label">Category</div>
+          <div class="spec-label">دسته‌بندی</div>
           <div class="spec-val">${escapeHtml(item.category_path)}</div>
         </div>
         <div class="spec-item">
-          <div class="spec-label">Location</div>
+          <div class="spec-label">محل نگهداری</div>
           <div class="spec-val">${escapeHtml(item.location)}</div>
         </div>
         <div class="spec-item">
-          <div class="spec-label">Mounting / Size</div>
+          <div class="spec-label">نوع نصب / سایز</div>
           <div class="spec-val">${escapeHtml(item.mounting_type || "—")} / ${escapeHtml(item.size || "—")}</div>
         </div>
         <div class="spec-item">
-          <div class="spec-label">Voltage / Material</div>
+          <div class="spec-label">ولتاژ / متریال</div>
           <div class="spec-val">${escapeHtml(item.voltage || "—")} / ${escapeHtml(item.material || "—")}</div>
         </div>
       </div>
 
       ${
         item.description
-          ? `<div class="alert" style="margin-bottom: 16px;"><strong>Notes:</strong> ${escapeHtml(
+          ? `<div class="alert" style="margin-bottom: 16px;"><strong>توضیحات:</strong> ${escapeHtml(
               item.description
             )}</div>`
           : ""
       }
 
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;gap:8px;flex-wrap:wrap;">
-        <h4 style="font-size:0.95rem;">Recent Transaction History</h4>
+        <h4 style="font-size:0.95rem;">تاریخچه گردش‌های اخیر قطعه</h4>
         <a class="btn btn-sm btn-primary" href="/transactions/new?item_code=${encodeURIComponent(item.item_code)}">
-          New Transaction for Item
+          ثبت تراکنش برای این قطعه
         </a>
       </div>
       ${
@@ -257,27 +314,27 @@ export async function openItemDetailModal(itemId) {
                <table class="table">
                  <thead>
                    <tr>
-                     <th>Date</th>
-                     <th>Type</th>
-                     <th class="text-right">Qty</th>
-                     <th class="text-right">Stock</th>
-                     <th class="text-right">Price</th>
-                     <th class="text-right">Unit Cost</th>
-                     <th class="text-right">Total Cost</th>
-                     <th>User</th>
-                     <th>Note</th>
+                     <th>تاریخ</th>
+                     <th>نوع</th>
+                     <th class="text-right">تعداد</th>
+                     <th class="text-right">موجودی</th>
+                     <th class="text-right">قیمت</th>
+                     <th class="text-right">بهای واحد</th>
+                     <th class="text-right">جمع ارزش</th>
+                     <th>کاربر</th>
+                     <th>توضیحات</th>
                    </tr>
                  </thead>
                  <tbody>${txRows}</tbody>
                </table>
              </div>`
-          : `<div class="empty-state">No transactions recorded for this component yet.</div>`
+          : `<div class="empty-state">هنوز هیچ تراکنشی برای این قطعه ثبت نشده است.</div>`
       }
     `;
   } catch (err) {
     const body = modal.querySelector(".modal-body");
     if (body) {
-      body.innerHTML = `<div class="alert alert-danger">${escapeHtml(err.message)}</div>`;
+      body.innerHTML = `<div class="alert alert-danger">${escapeHtml(translateServerError(err.message))}</div>`;
     }
   }
 }

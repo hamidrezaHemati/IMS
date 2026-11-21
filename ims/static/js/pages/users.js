@@ -37,7 +37,7 @@ document.addEventListener("DOMContentLoaded", () => {
         },
       });
       e.target.reset();
-      toast("User created.", "success");
+      toast("کاربر جدید ایجاد شد.", "success");
       loadUsers();
     } catch (err) {
       toast(err.message, "error");
@@ -49,7 +49,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const newPw = document.getElementById("pw-new").value;
     const confirmPw = document.getElementById("pw-confirm").value;
     if (newPw !== confirmPw) {
-      toast("New password and confirmation do not match.", "warning");
+      toast("رمز عبور جدید و تکرار آن یکسان نیستند.", "warning");
       return;
     }
 
@@ -62,7 +62,7 @@ document.addEventListener("DOMContentLoaded", () => {
         },
       });
       e.target.reset();
-      toast("Password updated.", "success");
+      toast("رمز عبور با موفقیت تغییر یافت.", "success");
     } catch (err) {
       toast(err.message, "error");
     }

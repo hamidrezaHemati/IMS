@@ -1,87 +1,87 @@
 {% extends "base.html" %}
-{% block title %}BOM Cost Calculator — Component IMS{% endblock %}
-{% block mobile_title %}BOM Calculator{% endblock %}
+{% block title %}محاسبه‌گر BOM — سامانه مدیریت انبار{% endblock %}
+{% block mobile_title %}محاسبه‌گر BOM{% endblock %}
 
 {% block content %}
 <div class="page-header">
   <div>
-    <h1 class="page-title">BOM Cost Calculator</h1>
-    <p class="page-subtitle">Check component availability and calculate BOM cost using Weighted Average and Last Purchase prices</p>
+    <h1 class="page-title">محاسبه‌گر هزینه و موجودی BOM</h1>
+    <p class="page-subtitle">بررسی موجودی قطعات و محاسبه هزینه BOM بر اساس میانگین موزون (WAC) و آخرین قیمت خرید</p>
   </div>
-  <span class="badge badge-info">Read-Only Analysis • Does Not Alter Stock</span>
+  <span class="badge badge-warning">تحلیل فقط‌خواندنی • بدون تغییر در موجودی انبار</span>
 </div>
 
-<!-- Step 1: Upload & Column Mapping -->
+<!-- مرحله ۱: بارگذاری و نگاشت ستون‌ها -->
 <section class="card" style="margin-bottom:18px;">
   <div class="card-header">
-    <h2 class="card-title">1. Upload BOM Excel File (.xlsx)</h2>
+    <h2 class="card-title">۱. بارگذاری فایل اکسل BOM (.xlsx)</h2>
   </div>
   <div class="card-body">
     <div id="bom-dropzone" class="dropzone">
       <input id="bom-file-input" type="file" accept=".xlsx" class="hidden">
-      <p style="font-weight:600;">Drop your BOM Excel (.xlsx) file here or click to browse</p>
-      <p class="text-muted" style="font-size:0.84rem;margin-top:4px;">Required columns: Item Code &amp; Quantity (Optional: Item Name). Duplicate item codes are automatically aggregated.</p>
+      <p style="font-weight:700;">فایل اکسل BOM (.xlsx) را اینجا رها کنید یا برای انتخاب کلیک کنید</p>
+      <p class="text-muted" style="font-size:0.84rem;margin-top:4px;">ستون‌های الزامی: کد قطعه (Item Code) و تعداد (Quantity) • ستون اختیاری: نام قطعه. کدهای تکراری به صورت خودکار تجمیع می‌شوند.</p>
     </div>
 
     <div id="bom-mapping-panel" class="hidden" style="margin-top:16px;">
       <div class="form-grid">
         <div class="field">
-          <label for="bom-sheet">Worksheet</label>
+          <label for="bom-sheet">کاربرگ (Sheet)</label>
           <select id="bom-sheet" class="select"></select>
         </div>
         <div class="field">
-          <label for="bom-col-code">Item Code Column *</label>
+          <label for="bom-col-code">ستون کد قطعه *</label>
           <select id="bom-col-code" class="select"></select>
         </div>
         <div class="field">
-          <label for="bom-col-qty">Quantity Column *</label>
+          <label for="bom-col-qty">ستون تعداد موردنیاز *</label>
           <select id="bom-col-qty" class="select"></select>
         </div>
         <div class="field">
-          <label for="bom-col-name">Item Name Column (Optional)</label>
+          <label for="bom-col-name">ستون نام قطعه (اختیاری)</label>
           <select id="bom-col-name" class="select"></select>
         </div>
       </div>
 
       <div style="display:flex;gap:10px;margin-top:14px;flex-wrap:wrap;">
-        <button type="button" id="bom-calc-btn" class="btn btn-primary">Analyze Availability &amp; Calculate Cost</button>
-        <button type="button" id="bom-export-btn" class="btn hidden">Download Excel Report (.xlsx)</button>
+        <button type="button" id="bom-calc-btn" class="btn btn-primary">تحلیل موجودی و محاسبه هزینه</button>
+        <button type="button" id="bom-export-btn" class="btn btn-accent hidden">دانلود گزارش اکسل (.xlsx)</button>
       </div>
     </div>
   </div>
 </section>
 
-<!-- Results Area -->
+<!-- نتایج تحلیل -->
 <div id="bom-results" class="hidden">
-  <!-- Summary Cards -->
+  <!-- کارت‌های خلاصه -->
   <div id="bom-summary-kpis" class="grid grid-kpi" style="margin-bottom:18px;"></div>
 
-  <!-- Report 1: Inventory Availability -->
+  <!-- گزارش ۱: وضعیت موجودی -->
   <section class="card" style="margin-bottom:18px;">
     <div class="card-header">
       <div>
-        <h2 class="card-title">Report 1: Inventory Availability</h2>
+        <h2 class="card-title">گزارش ۱: وضعیت موجودی انبار</h2>
       </div>
       <div class="tabs" id="bom-avail-filter">
-        <button type="button" class="tab-btn active" data-status="ALL">All</button>
-        <button type="button" class="tab-btn" data-status="Available">Available</button>
-        <button type="button" class="tab-btn" data-status="Insufficient">Insufficient</button>
-        <button type="button" class="tab-btn" data-status="Out of Stock">Out of Stock</button>
-        <button type="button" class="tab-btn" data-status="Unknown">Unknown</button>
+        <button type="button" class="tab-btn active" data-status="ALL">همه</button>
+        <button type="button" class="tab-btn" data-status="Available">موجود</button>
+        <button type="button" class="tab-btn" data-status="Insufficient">کمبود موجودی</button>
+        <button type="button" class="tab-btn" data-status="Out of Stock">ناموجود</button>
+        <button type="button" class="tab-btn" data-status="Unknown">ناشناخته</button>
       </div>
     </div>
     <div class="table-wrap">
       <table class="table">
         <thead>
           <tr>
-            <th>Item Code</th>
-            <th>Model / Name</th>
-            <th>Category</th>
-            <th>Location</th>
-            <th class="text-right">Required Qty</th>
-            <th class="text-right">Available Qty</th>
-            <th class="text-right">Shortage</th>
-            <th>Status</th>
+            <th>کد قطعه</th>
+            <th>مدل / نام قطعه</th>
+            <th>دسته‌بندی</th>
+            <th>محل نگهداری</th>
+            <th class="text-right">تعداد موردنیاز</th>
+            <th class="text-right">موجودی انبار</th>
+            <th class="text-right">کسری</th>
+            <th>وضعیت</th>
           </tr>
         </thead>
         <tbody id="bom-avail-tbody"></tbody>
@@ -89,20 +89,20 @@
     </div>
   </section>
 
-  <!-- Invalid Rows (if any) -->
+  <!-- ردیف‌های نامعتبر -->
   <section id="bom-invalid-card" class="card hidden" style="margin-bottom:18px;">
     <div class="card-header">
-      <h2 class="card-title text-danger">Invalid BOM Rows</h2>
+      <h2 class="card-title text-danger">ردیف‌های نامعتبر فایل BOM</h2>
     </div>
     <div class="table-wrap">
       <table class="table">
         <thead>
           <tr>
-            <th>Excel Row</th>
-            <th>Item Code</th>
-            <th>Item Name</th>
-            <th>Raw Quantity</th>
-            <th>Error</th>
+            <th>ردیف اکسل</th>
+            <th>کد قطعه</th>
+            <th>نام قطعه</th>
+            <th>مقدار خام تعداد</th>
+            <th>خطا</th>
           </tr>
         </thead>
         <tbody id="bom-invalid-tbody"></tbody>
@@ -110,22 +110,22 @@
     </div>
   </section>
 
-  <!-- Report 2: BOM Cost Calculation -->
+  <!-- گزارش ۲: محاسبه هزینه BOM -->
   <section class="card">
     <div class="card-header">
-      <h2 class="card-title">Report 2: BOM Cost Calculation</h2>
+      <h2 class="card-title">گزارش ۲: محاسبه هزینه BOM</h2>
     </div>
     <div class="table-wrap">
       <table class="table">
         <thead>
           <tr>
-            <th>Item Code</th>
-            <th>Item Name / Model</th>
-            <th class="text-right">Required Qty</th>
-            <th class="text-right">WAC Unit Cost</th>
-            <th class="text-right">WAC Line Total</th>
-            <th class="text-right">Last Purchase Unit</th>
-            <th class="text-right">Last Purchase Line</th>
+            <th>کد قطعه</th>
+            <th>نام / مدل قطعه</th>
+            <th class="text-right">تعداد موردنیاز</th>
+            <th class="text-right">فی میانگین موزون</th>
+            <th class="text-right">جمع میانگین موزون</th>
+            <th class="text-right">فی آخرین خرید</th>
+            <th class="text-right">جمع آخرین خرید</th>
           </tr>
         </thead>
         <tbody id="bom-cost-tbody"></tbody>

@@ -1,115 +1,115 @@
 {% extends "base.html" %}
-{% block title %}Excel Import &amp; Export — Component IMS{% endblock %}
-{% block mobile_title %}Excel Import / Export{% endblock %}
+{% block title %}ورود و خروج اکسل — سامانه مدیریت انبار{% endblock %}
+{% block mobile_title %}ورود و خروج اکسل{% endblock %}
 
 {% block content %}
 <div class="page-header">
   <div>
-    <h1 class="page-title">Excel Import &amp; Export</h1>
-    <p class="page-subtitle">Initialize stock from Excel via OPENING transactions or export filtered inventory and movement reports</p>
+    <h1 class="page-title">ورود موجودی اولیه و خروجی اکسل</h1>
+    <p class="page-subtitle">ایجاد موجودی اولیه از فایل اکسل از طریق تراکنش OPENING و دریافت گزارش‌های اکسل فیلترشده</p>
   </div>
 </div>
 
 <div class="tabs" style="margin-bottom:16px;">
-  <button type="button" class="tab-btn active" data-excel-tab="import">Initial Inventory Import</button>
-  <button type="button" class="tab-btn" data-excel-tab="export">Filtered Excel Exports</button>
+  <button type="button" class="tab-btn active" data-excel-tab="import">ورود موجودی اولیه (اکسل)</button>
+  <button type="button" class="tab-btn" data-excel-tab="export">خروجی اکسل با فیلتر</button>
 </div>
 
-<!-- TAB 1: INITIAL INVENTORY IMPORT -->
+<!-- تب ۱: ورود موجودی اولیه -->
 <div id="excel-tab-import">
   <section class="card" style="margin-bottom:18px;">
     <div class="card-header">
-      <h2 class="card-title">Step 1: Upload Initial Inventory Excel (.xlsx)</h2>
+      <h2 class="card-title">مرحله ۱: بارگذاری فایل اکسل موجودی اولیه (.xlsx)</h2>
     </div>
     <div class="card-body">
       <div id="imp-dropzone" class="dropzone">
         <input id="imp-file-input" type="file" accept=".xlsx" class="hidden">
-        <p style="font-weight:600;">Drop your initial inventory Excel (.xlsx) file here or click to browse</p>
+        <p style="font-weight:700;">فایل اکسل موجودی اولیه (.xlsx) را اینجا رها کنید یا کلیک کنید</p>
         <p class="text-muted" style="font-size:0.84rem;margin-top:4px;">
-          Categories and subcategories will be scanned and populated automatically before creating items and OPENING stock transactions.
+          سیستم ابتدا ستون‌های category و sub_category را بررسی و جدول دسته‌بندی‌ها را تکمیل می‌کند، سپس اقلام و تراکنش‌های OPENING را ثبت می‌نماید.
         </p>
       </div>
 
       <div id="imp-config-panel" class="hidden" style="margin-top:18px;">
         <div class="form-grid" style="margin-bottom:14px;">
           <div class="field">
-            <label for="imp-sheet">Worksheet</label>
+            <label for="imp-sheet">کاربرگ (Sheet)</label>
             <select id="imp-sheet" class="select"></select>
           </div>
           <div class="field" style="grid-column:span 2;">
-            <label for="imp-policy">Duplicate / Existing Item Policy</label>
+            <label for="imp-policy">سیاست برخورد با کدهای قطعه تکراری / موجود در سیستم</label>
             <select id="imp-policy" class="select">
-              <option value="skip">Skip existing item codes (Safe Default — never alters existing stock)</option>
-              <option value="update_metadata">Update item specifications only (never modifies stock or transactions)</option>
+              <option value="skip">نادیده گرفتن اقلام موجود در سیستم (حالت پیش‌فرض امن — بدون تغییر موجودی)</option>
+              <option value="update_metadata">به‌روزرسانی فقط مشخصات فنی قطعه (بدون تغییر موجودی یا تراکنش‌ها)</option>
             </select>
           </div>
         </div>
 
-        <h3 style="font-size:0.95rem;margin-bottom:10px;">Column Mapping</h3>
+        <h3 style="font-size:0.95rem;margin-bottom:10px;">تطبیق ستون‌های فایل اکسل</h3>
         <div id="imp-mapping-grid" class="form-grid"></div>
 
         <div style="display:flex;gap:10px;margin-top:16px;flex-wrap:wrap;">
-          <button type="button" id="imp-preview-btn" class="btn btn-primary">Preview &amp; Validate Data</button>
+          <button type="button" id="imp-preview-btn" class="btn btn-primary">پیش‌نمایش و اعتبارسنجی داده‌ها</button>
         </div>
       </div>
     </div>
   </section>
 
-  <!-- Preview Section -->
+  <!-- بخش پیش‌نمایش -->
   <section id="imp-preview-section" class="hidden">
     <div id="imp-policy-banner" class="alert alert-info" style="margin-bottom:16px;"></div>
 
     <div id="imp-preview-kpis" class="grid grid-kpi" style="margin-bottom:18px;"></div>
 
-    <!-- Category Population Plan -->
+    <!-- پیش‌نمایش دسته‌بندی‌ها -->
     <section class="card" style="margin-bottom:18px;">
       <div class="card-header">
-        <h2 class="card-title">Category &amp; Subcategory Population Preview</h2>
+        <h2 class="card-title">پیش‌نمایش ایجاد دسته‌بندی‌ها و زیردسته‌ها</h2>
       </div>
       <div id="imp-cat-plan" class="card-body"></div>
     </section>
 
-    <!-- Row Validation Preview -->
+    <!-- جدول اعتبارسنجی ردیف‌ها -->
     <section class="card" style="margin-bottom:18px;">
       <div class="card-header">
-        <h2 class="card-title">Row-by-Row Validation Preview</h2>
+        <h2 class="card-title">پیش‌نمایش اعتبارسنجی ردیف‌به‌ردیف</h2>
         <div class="tabs" id="imp-row-filter">
-          <button type="button" class="tab-btn active" data-row-status="ALL">All</button>
-          <button type="button" class="tab-btn" data-row-status="new">New</button>
-          <button type="button" class="tab-btn" data-row-status="existing">Existing</button>
-          <button type="button" class="tab-btn" data-row-status="duplicate">Duplicate</button>
-          <button type="button" class="tab-btn" data-row-status="invalid">Invalid</button>
+          <button type="button" class="tab-btn active" data-row-status="ALL">همه</button>
+          <button type="button" class="tab-btn" data-row-status="new">جدید</button>
+          <button type="button" class="tab-btn" data-row-status="existing">موجود در سیستم</button>
+          <button type="button" class="tab-btn" data-row-status="duplicate">تکراری</button>
+          <button type="button" class="tab-btn" data-row-status="invalid">نامعتبر</button>
         </div>
       </div>
       <div class="table-wrap" style="max-height:440px;">
         <table class="table">
           <thead>
             <tr>
-              <th>Row</th>
-              <th>Status</th>
-              <th>Item Code</th>
-              <th>Category / Subcategory</th>
-              <th>Model</th>
-              <th>Mount / Size</th>
-              <th>Location</th>
-              <th class="text-right">Qty</th>
-              <th class="text-right">Price</th>
-              <th>Validation Details</th>
+              <th>ردیف</th>
+              <th>وضعیت</th>
+              <th>کد قطعه</th>
+              <th>دسته‌بندی / زیردسته</th>
+              <th>مدل</th>
+              <th>نصب / سایز</th>
+              <th>محل نگهداری</th>
+              <th class="text-right">تعداد</th>
+              <th class="text-right">قیمت</th>
+              <th>جزئیات اعتبارسنجی</th>
             </tr>
           </thead>
           <tbody id="imp-preview-tbody"></tbody>
         </table>
       </div>
       <div class="card-body" style="border-top:1px solid var(--border-color);display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap;">
-        <button type="button" id="imp-confirm-btn" class="btn btn-success">Confirm &amp; Execute Import</button>
+        <button type="button" id="imp-confirm-btn" class="btn btn-primary">تایید و اجرای نهایی ورود اطلاعات</button>
       </div>
     </section>
   </section>
 
-  <!-- Final Summary Section -->
+  <!-- گزارش نهایی ورود -->
   <section id="imp-result-section" class="card hidden">
     <div class="card-header">
-      <h2 class="card-title">Import Execution Summary</h2>
+      <h2 class="card-title">گزارش خلاصه اجرای ورود اطلاعات</h2>
     </div>
     <div class="card-body">
       <div id="imp-result-kpis" class="grid grid-kpi" style="margin-bottom:16px;"></div>
@@ -117,13 +117,13 @@
         <table class="table">
           <thead>
             <tr>
-              <th>Row</th>
-              <th>Item Code</th>
-              <th>Model</th>
-              <th>Outcome</th>
-              <th class="text-right">Qty</th>
-              <th class="text-right">Price</th>
-              <th>Details</th>
+              <th>ردیف</th>
+              <th>کد قطعه</th>
+              <th>مدل</th>
+              <th>نتیجه</th>
+              <th class="text-right">تعداد</th>
+              <th class="text-right">قیمت</th>
+              <th>جزئیات</th>
             </tr>
           </thead>
           <tbody id="imp-result-tbody"></tbody>
@@ -133,72 +133,72 @@
   </section>
 </div>
 
-<!-- TAB 2: FILTERED EXCEL EXPORTS -->
+<!-- تب ۲: خروجی اکسل با فیلتر -->
 <div id="excel-tab-export" class="hidden">
   <div class="grid grid-2">
     <section class="card">
       <div class="card-header">
-        <h2 class="card-title">Export Current Inventory (.xlsx)</h2>
+        <h2 class="card-title">خروجی اکسل موجودی فعلی (.xlsx)</h2>
       </div>
       <div class="card-body">
         <div class="form-grid">
-          <div class="field"><label for="ex-search">General Search</label><input id="ex-search" class="input" type="text" placeholder="Any field..."></div>
-          <div class="field"><label for="ex-parent-cat">Main Category</label><select id="ex-parent-cat" class="select"></select></div>
-          <div class="field"><label for="ex-sub-cat">Subcategory</label><select id="ex-sub-cat" class="select"></select></div>
-          <div class="field"><label for="ex-item-code">Item Code</label><input id="ex-item-code" class="input" type="text"></div>
-          <div class="field"><label for="ex-model">Model</label><input id="ex-model" class="input" type="text"></div>
-          <div class="field"><label for="ex-size">Size</label><input id="ex-size" class="input" type="text"></div>
-          <div class="field"><label for="ex-mounting">Mounting Type</label>
+          <div class="field"><label for="ex-search">جستجوی کلی</label><input id="ex-search" class="input" type="text" placeholder="هر یک از فیلدها..."></div>
+          <div class="field"><label for="ex-parent-cat">دسته‌بندی اصلی</label><select id="ex-parent-cat" class="select"></select></div>
+          <div class="field"><label for="ex-sub-cat">زیردسته</label><select id="ex-sub-cat" class="select"></select></div>
+          <div class="field"><label for="ex-item-code">کد قطعه</label><input id="ex-item-code" class="input" type="text"></div>
+          <div class="field"><label for="ex-model">مدل</label><input id="ex-model" class="input" type="text"></div>
+          <div class="field"><label for="ex-size">سایز</label><input id="ex-size" class="input" type="text"></div>
+          <div class="field"><label for="ex-mounting">نوع نصب</label>
             <select id="ex-mounting" class="select">
-              <option value="">All</option>
+              <option value="">همه</option>
               <option value="SMD">SMD</option>
               <option value="DIP">DIP</option>
             </select>
           </div>
-          <div class="field"><label for="ex-material">Material</label><input id="ex-material" class="input" type="text"></div>
-          <div class="field"><label for="ex-voltage">Voltage</label><input id="ex-voltage" class="input" type="text"></div>
-          <div class="field"><label for="ex-location">Location / Drawer</label><input id="ex-location" class="input" type="text"></div>
-          <div class="field"><label for="ex-min-qty">Min Quantity</label><input id="ex-min-qty" class="input" type="number" min="0" step="1"></div>
-          <div class="field"><label for="ex-max-qty">Max Quantity</label><input id="ex-max-qty" class="input" type="number" min="0" step="1"></div>
-          <div class="field"><label for="ex-below">Below Stock Threshold (&lt;)</label><input id="ex-below" class="input" type="number" min="0" step="1"></div>
+          <div class="field"><label for="ex-material">متریال</label><input id="ex-material" class="input" type="text"></div>
+          <div class="field"><label for="ex-voltage">ولتاژ</label><input id="ex-voltage" class="input" type="text"></div>
+          <div class="field"><label for="ex-location">محل نگهداری / کشو</label><input id="ex-location" class="input" type="text"></div>
+          <div class="field"><label for="ex-min-qty">حداقل موجودی</label><input id="ex-min-qty" class="input" type="number" min="0" step="1"></div>
+          <div class="field"><label for="ex-max-qty">حداکثر موجودی</label><input id="ex-max-qty" class="input" type="number" min="0" step="1"></div>
+          <div class="field"><label for="ex-below">کمتر از تعداد (&lt;)</label><input id="ex-below" class="input" type="number" min="0" step="1"></div>
           <div class="field" style="justify-content:flex-end;">
-            <label class="checkbox-row"><input id="ex-zero" type="checkbox"><span>Zero stock only</span></label>
+            <label class="checkbox-row"><input id="ex-zero" type="checkbox"><span>فقط کالاهای با موجودی صفر</span></label>
           </div>
         </div>
         <div id="ex-inv-count-msg" class="text-secondary" style="margin-top:12px;font-size:0.86rem;"></div>
         <div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap;">
-          <button type="button" id="ex-inv-count-btn" class="btn">Check Matching Items</button>
-          <button type="button" id="ex-inv-dl-btn" class="btn btn-primary">Download Inventory Excel</button>
-          <button type="button" id="ex-inv-reset-btn" class="btn">Reset</button>
+          <button type="button" id="ex-inv-count-btn" class="btn">بررسی تعداد اقلام منطبق</button>
+          <button type="button" id="ex-inv-dl-btn" class="btn btn-primary">دانلود فایل اکسل موجودی</button>
+          <button type="button" id="ex-inv-reset-btn" class="btn">پاک کردن</button>
         </div>
       </div>
     </section>
 
     <section class="card">
       <div class="card-header">
-        <h2 class="card-title">Export Movement Report (.xlsx)</h2>
+        <h2 class="card-title">خروجی اکسل گردش‌های انبار (.xlsx)</h2>
       </div>
       <div class="card-body">
         <div class="form-grid">
-          <div class="field"><label for="extx-from">Date From</label><input id="extx-from" class="input" type="date"></div>
-          <div class="field"><label for="extx-to">Date To</label><input id="extx-to" class="input" type="date"></div>
-          <div class="field"><label for="extx-type">Transaction Type</label>
+          <div class="field"><label for="extx-from">از تاریخ</label><input id="extx-from" class="input ltr" type="date"></div>
+          <div class="field"><label for="extx-to">تا تاریخ</label><input id="extx-to" class="input ltr" type="date"></div>
+          <div class="field"><label for="extx-type">نوع تراکنش</label>
             <select id="extx-type" class="select">
-              <option value="">All Types</option>
-              <option value="OPENING">OPENING</option>
-              <option value="PURCHASE_IN">PURCHASE_IN</option>
-              <option value="OUT">OUT</option>
-              <option value="ADJUSTMENT_IN">ADJUSTMENT_IN</option>
-              <option value="ADJUSTMENT_OUT">ADJUSTMENT_OUT</option>
+              <option value="">همه انواع</option>
+              <option value="OPENING">موجودی اولیه (OPENING)</option>
+              <option value="PURCHASE_IN">خرید و ورود (PURCHASE_IN)</option>
+              <option value="OUT">خروج کالا (OUT)</option>
+              <option value="ADJUSTMENT_IN">تعدیل افزایشی (ADJUSTMENT_IN)</option>
+              <option value="ADJUSTMENT_OUT">تعدیل کاهشی (ADJUSTMENT_OUT)</option>
             </select>
           </div>
-          <div class="field"><label for="extx-user">User</label>
-            <select id="extx-user" class="select"><option value="">All Users</option></select>
+          <div class="field"><label for="extx-user">کاربر</label>
+            <select id="extx-user" class="select"><option value="">همه کاربران</option></select>
           </div>
-          <div class="field" style="grid-column:1 / -1;"><label for="extx-search">Item Code / Model / Note</label><input id="extx-search" class="input" type="text"></div>
+          <div class="field" style="grid-column:1 / -1;"><label for="extx-search">کد قطعه / مدل / توضیحات</label><input id="extx-search" class="input" type="text"></div>
         </div>
         <div style="display:flex;gap:8px;margin-top:16px;flex-wrap:wrap;">
-          <button type="button" id="ex-tx-dl-btn" class="btn btn-primary">Download Movement Excel</button>
+          <button type="button" id="ex-tx-dl-btn" class="btn btn-primary">دانلود گزارش اکسل گردش‌ها</button>
         </div>
       </div>
     </section>

@@ -1,61 +1,61 @@
 {% extends "base.html" %}
-{% block title %}Transaction History — Component IMS{% endblock %}
-{% block mobile_title %}Transaction History{% endblock %}
+{% block title %}تاریخچه تراکنش‌ها — سامانه مدیریت انبار{% endblock %}
+{% block mobile_title %}تاریخچه تراکنش‌ها{% endblock %}
 
 {% block content %}
 <div class="page-header">
   <div>
-    <h1 class="page-title">Transaction History</h1>
-    <p class="page-subtitle">Immutable stock ledger recorded and validated by PostgreSQL triggers</p>
+    <h1 class="page-title">تاریخچه تراکنش‌های انبار</h1>
+    <p class="page-subtitle">دفتر کل تغییرناپذیر گردش‌های انبار؛ تمام محاسبات موجودی و هزینه توسط تریگرهای PostgreSQL ثبت شده‌اند</p>
   </div>
   <div class="page-actions">
-    <a class="btn btn-primary" href="{{ url_for('pages.new_transaction') }}">+ New Transaction</a>
-    <button type="button" id="tx-export-btn" class="btn">Export to Excel</button>
+    <a class="btn btn-primary" href="{{ url_for('pages.new_transaction') }}">+ ثبت تراکنش جدید</a>
+    <button type="button" id="tx-export-btn" class="btn">خروجی اکسل</button>
   </div>
 </div>
 
 <section class="card">
   <div class="card-header">
-    <h2 class="card-title">Movement Filters</h2>
-    <button type="button" id="hist-filter-toggle" class="btn btn-sm filter-toggle-mobile">Filters</button>
+    <h2 class="card-title">فیلتر گردش‌های کالا</h2>
+    <button type="button" id="hist-filter-toggle" class="btn btn-sm filter-toggle-mobile">فیلترها</button>
   </div>
 
   <div class="card-body" style="border-bottom:1px solid var(--border-color);">
     <div id="hist-filters" class="filter-collapsible">
       <div class="form-grid">
         <div class="field">
-          <label for="h-search">Item Code / Model / Note</label>
-          <input id="h-search" class="input" type="search" placeholder="Search code, model, note...">
+          <label for="h-search">کد قطعه / مدل / توضیحات</label>
+          <input id="h-search" class="input" type="search" placeholder="جستجوی کد، مدل یا یادداشت...">
         </div>
         <div class="field">
-          <label for="h-type">Transaction Type</label>
+          <label for="h-type">نوع تراکنش</label>
           <select id="h-type" class="select">
-            <option value="">All Types</option>
-            <option value="OPENING">OPENING</option>
-            <option value="PURCHASE_IN">PURCHASE_IN</option>
-            <option value="OUT">OUT</option>
-            <option value="ADJUSTMENT_IN">ADJUSTMENT_IN</option>
-            <option value="ADJUSTMENT_OUT">ADJUSTMENT_OUT</option>
+            <option value="">همه انواع</option>
+            <option value="OPENING">موجودی اولیه (OPENING)</option>
+            <option value="PURCHASE_IN">خرید و ورود (PURCHASE_IN)</option>
+            <option value="OUT">خروج کالا (OUT)</option>
+            <option value="ADJUSTMENT_IN">تعدیل افزایشی (ADJUSTMENT_IN)</option>
+            <option value="ADJUSTMENT_OUT">تعدیل کاهشی (ADJUSTMENT_OUT)</option>
           </select>
         </div>
         <div class="field">
-          <label for="h-user">User</label>
+          <label for="h-user">کاربر ثبت‌کننده</label>
           <select id="h-user" class="select">
-            <option value="">All Users</option>
+            <option value="">همه کاربران</option>
           </select>
         </div>
         <div class="field">
-          <label for="h-from">Date From</label>
-          <input id="h-from" class="input" type="date">
+          <label for="h-from">از تاریخ</label>
+          <input id="h-from" class="input ltr" type="date">
         </div>
         <div class="field">
-          <label for="h-to">Date To</label>
-          <input id="h-to" class="input" type="date">
+          <label for="h-to">تا تاریخ</label>
+          <input id="h-to" class="input ltr" type="date">
         </div>
       </div>
       <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;">
-        <button type="button" id="h-apply-btn" class="btn btn-sm btn-primary">Apply Filters</button>
-        <button type="button" id="h-reset-btn" class="btn btn-sm">Reset</button>
+        <button type="button" id="h-apply-btn" class="btn btn-sm btn-primary">اعمال فیلتر</button>
+        <button type="button" id="h-reset-btn" class="btn btn-sm">پاک کردن</button>
       </div>
     </div>
   </div>
@@ -64,21 +64,21 @@
     <table class="table">
       <thead>
         <tr>
-          <th>Date</th>
-          <th>Type</th>
-          <th>Item Code</th>
-          <th>Model</th>
-          <th>User</th>
-          <th class="text-right">Qty</th>
-          <th class="text-right">Stock Change</th>
-          <th class="text-right">Price</th>
-          <th class="text-right">Unit Cost Snapshot</th>
-          <th class="text-right">Total Cost Snapshot</th>
-          <th>Note</th>
+          <th>تاریخ و زمان</th>
+          <th>نوع تراکنش</th>
+          <th>کد قطعه</th>
+          <th>مدل</th>
+          <th>کاربر</th>
+          <th class="text-right">تعداد</th>
+          <th class="text-right">تغییر موجودی</th>
+          <th class="text-right">قیمت ثبت‌شده</th>
+          <th class="text-right">بهای واحد (اسنپ‌شات)</th>
+          <th class="text-right">جمع ارزش تراکنش</th>
+          <th>توضیحات</th>
         </tr>
       </thead>
       <tbody id="h-tbody">
-        <tr><td colspan="11" class="empty-state">Loading transactions...</td></tr>
+        <tr><td colspan="11" class="empty-state">در حال بارگذاری تراکنش‌ها...</td></tr>
       </tbody>
     </table>
   </div>

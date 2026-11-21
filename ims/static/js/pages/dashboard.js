@@ -17,43 +17,43 @@ let currentPage = 1;
 function renderKpis(m) {
   const container = document.getElementById("dashboard-kpis");
   const wacNote = m.wac_complete
-    ? `<span class="kpi-note text-success">Complete across all stocked items</span>`
-    : `<span class="kpi-note text-warning">Incomplete: ${fmtQty(m.wac_missing_cost_items)} stocked item(s) missing WAC</span>`;
+    ? `<span class="kpi-note text-success">کامل برای تمام اقلام موجود</span>`
+    : `<span class="kpi-note text-warning">ناقص: قیمت ${fmtQty(m.wac_missing_cost_items)} قلم کالا نامشخص است</span>`;
 
   const lpcNote = m.lpc_complete
-    ? `<span class="kpi-note text-success">Complete across all stocked items</span>`
-    : `<span class="kpi-note text-warning">Incomplete: ${fmtQty(m.lpc_missing_cost_items)} stocked item(s) missing LPC</span>`;
+    ? `<span class="kpi-note text-success">کامل برای تمام اقلام موجود</span>`
+    : `<span class="kpi-note text-warning">ناقص: قیمت ${fmtQty(m.lpc_missing_cost_items)} قلم کالا نامشخص است</span>`;
 
   container.innerHTML = `
     <div class="card kpi-card">
-      <span class="kpi-label">Distinct Items</span>
+      <span class="kpi-label">تعداد اقلام متمایز</span>
       <span class="kpi-value">${fmtQty(m.distinct_items)}</span>
-      <span class="kpi-note">${fmtQty(m.zero_stock_count)} item(s) at zero stock</span>
+      <span class="kpi-note">${fmtQty(m.zero_stock_count)} قلم با موجودی صفر</span>
     </div>
     <div class="card kpi-card">
-      <span class="kpi-label">Total Stock Units</span>
+      <span class="kpi-label">مجموع واحدهای موجود</span>
       <span class="kpi-value">${fmtQty(m.total_quantity)}</span>
-      <span class="kpi-note">Total physical component count</span>
+      <span class="kpi-note">مجموع کل موجودی فیزیکی قطعات</span>
     </div>
-    <div class="card kpi-card">
-      <span class="kpi-label">Value (Weighted Avg)</span>
+    <div class="card kpi-card kpi-card-accent">
+      <span class="kpi-label">ارزش انبار (میانگین موزون)</span>
       <span class="kpi-value">${fmtCost(m.wac_known_value)}</span>
       ${wacNote}
     </div>
-    <div class="card kpi-card">
-      <span class="kpi-label">Value (Last Purchase)</span>
+    <div class="card kpi-card kpi-card-accent">
+      <span class="kpi-label">ارزش انبار (آخرین خرید)</span>
       <span class="kpi-value">${fmtCost(m.lpc_known_value)}</span>
       ${lpcNote}
     </div>
     <div class="card kpi-card">
-      <span class="kpi-label">Zero-Stock Items</span>
+      <span class="kpi-label">اقلام ناموجود (صفر)</span>
       <span class="kpi-value ${m.zero_stock_count > 0 ? "text-danger" : ""}">${fmtQty(m.zero_stock_count)}</span>
-      <span class="kpi-note">Out-of-stock components</span>
+      <span class="kpi-note">قطعات بدون موجودی در انبار</span>
     </div>
     <div class="card kpi-card">
-      <span class="kpi-label">Transactions</span>
+      <span class="kpi-label">کل تراکنش‌های انبار</span>
       <span class="kpi-value">${fmtQty(m.total_tx_count)}</span>
-      <span class="kpi-note"><strong class="num">${fmtQty(m.incoming_tx_count)}</strong> in / <strong class="num">${fmtQty(m.outgoing_tx_count)}</strong> out</span>
+      <span class="kpi-note"><strong class="num">${fmtQty(m.incoming_tx_count)}</strong> ورود / <strong class="num">${fmtQty(m.outgoing_tx_count)}</strong> خروج</span>
     </div>
   `;
 }
@@ -61,7 +61,7 @@ function renderKpis(m) {
 function renderRecentMovements(list) {
   const box = document.getElementById("dash-recent-tx");
   if (!list.length) {
-    box.innerHTML = `<div class="empty-state">No inventory movements recorded yet.</div>`;
+    box.innerHTML = `<div class="empty-state">هنوز هیچ تراکنشی در انبار ثبت نشده است.</div>`;
     return;
   }
   box.innerHTML = `
@@ -82,7 +82,7 @@ function renderRecentMovements(list) {
           </div>
           <div class="text-right num" style="flex-shrink:0;">
             <div><strong>${fmtQty(tx.quantity)}</strong></div>
-            <div class="text-muted" style="font-size:0.78rem;">${fmtQty(tx.stock_before)} → ${fmtQty(tx.stock_after)}</div>
+            <div class="text-muted ltr" style="font-size:0.78rem;">${fmtQty(tx.stock_before)} → ${fmtQty(tx.stock_after)}</div>
           </div>
         </div>`
         )
@@ -94,7 +94,7 @@ function renderRecentMovements(list) {
 function renderRecentItems(items) {
   const box = document.getElementById("dash-recent-items");
   if (!items.length) {
-    box.innerHTML = `<div class="empty-state">No items registered yet.</div>`;
+    box.innerHTML = `<div class="empty-state">هنوز هیچ قطعه‌ای ثبت نشده است.</div>`;
     return;
   }
   box.innerHTML = `
@@ -105,7 +105,7 @@ function renderRecentItems(items) {
         <div data-item-id="${it.id}" class="recent-item-row" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:10px;padding-bottom:8px;border-bottom:1px solid var(--border-color);">
           <div style="min-width:0;">
             <div><strong class="mono">${escapeHtml(it.item_code)}</strong> — ${escapeHtml(it.model)}</div>
-            <div class="text-muted" style="font-size:0.78rem;">${escapeHtml(it.category_path)} • Loc: ${escapeHtml(it.location)}</div>
+            <div class="text-muted" style="font-size:0.78rem;">${escapeHtml(it.category_path)} • محل: ${escapeHtml(it.location)}</div>
           </div>
           <div>${stockBadge(it.quantity)}</div>
         </div>`
@@ -136,7 +136,7 @@ async function loadInventoryTable(page = 1) {
   currentPage = page;
   const tbody = document.getElementById("dash-items-tbody");
   const mobile = document.getElementById("dash-items-mobile");
-  tbody.innerHTML = `<tr><td colspan="9" class="empty-state">Loading...</td></tr>`;
+  tbody.innerHTML = `<tr><td colspan="9" class="empty-state">در حال بارگذاری...</td></tr>`;
   mobile.innerHTML = "";
 
   try {
@@ -144,8 +144,8 @@ async function loadInventoryTable(page = 1) {
     const items = data.items || [];
 
     if (!items.length) {
-      tbody.innerHTML = `<tr><td colspan="9" class="empty-state">No components match your filters.</td></tr>`;
-      mobile.innerHTML = `<div class="empty-state">No components match your filters.</div>`;
+      tbody.innerHTML = `<tr><td colspan="9" class="empty-state">هیچ قطعه‌ای با فیلترهای انتخابی یافت نشد.</td></tr>`;
+      mobile.innerHTML = `<div class="empty-state">هیچ قطعه‌ای با فیلترهای انتخابی یافت نشد.</div>`;
     } else {
       tbody.innerHTML = items
         .map(
@@ -158,8 +158,8 @@ async function loadInventoryTable(page = 1) {
           <td>${escapeHtml(it.mounting_type || "—")}</td>
           <td>${escapeHtml(it.location)}</td>
           <td class="text-right">${stockBadge(it.quantity)}</td>
-          <td class="text-right num">${fmtCost(it.weighted_avg_cost, "Unknown")}</td>
-          <td class="text-right num">${fmtCost(it.last_purchase_cost, "Unknown")}</td>
+          <td class="text-right num">${fmtCost(it.weighted_avg_cost, "نامشخص")}</td>
+          <td class="text-right num">${fmtCost(it.last_purchase_cost, "نامشخص")}</td>
         </tr>`
         )
         .join("");
@@ -177,10 +177,10 @@ async function loadInventoryTable(page = 1) {
             ${stockBadge(it.quantity)}
           </div>
           <div class="mobile-item-meta">
-            <div><span class="text-muted">Location:</span> ${escapeHtml(it.location)}</div>
-            <div><span class="text-muted">Mount/Size:</span> ${escapeHtml(it.mounting_type || "—")} / ${escapeHtml(it.size || "—")}</div>
-            <div><span class="text-muted">WAC:</span> <span class="num">${fmtCost(it.weighted_avg_cost, "Unknown")}</span></div>
-            <div><span class="text-muted">LPC:</span> <span class="num">${fmtCost(it.last_purchase_cost, "Unknown")}</span></div>
+            <div><span class="text-muted">محل:</span> ${escapeHtml(it.location)}</div>
+            <div><span class="text-muted">نصب/سایز:</span> ${escapeHtml(it.mounting_type || "—")} / ${escapeHtml(it.size || "—")}</div>
+            <div><span class="text-muted">میانگین موزون:</span> <span class="num">${fmtCost(it.weighted_avg_cost, "نامشخص")}</span></div>
+            <div><span class="text-muted">آخرین خرید:</span> <span class="num">${fmtCost(it.last_purchase_cost, "نامشخص")}</span></div>
           </div>
         </div>`
         )

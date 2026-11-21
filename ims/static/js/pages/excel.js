@@ -1,24 +1,81 @@
 import { apiFetch, buildQuery, downloadExcel } from "../api.js";
-import { escapeHtml, fmtCost, fmtQty, populateCategorySelects, toast } from "../ui.js";
+import { escapeHtml, fmtCost, fmtQty, populateCategorySelects, toast, translateServerError } from "../ui.js";
 
 const IMPORT_FIELDS = [
-  { key: "item_code", label: "Item Code", required: true },
-  { key: "category", label: "Main Category", required: true },
-  { key: "sub_category", label: "Subcategory", required: false },
-  { key: "model", label: "Model", required: true },
-  { key: "location", label: "Location / Drawer", required: true },
-  { key: "quantity", label: "Initial Quantity", required: true },
-  { key: "price", label: "Unit Price", required: false },
-  { key: "size", label: "Size / Package", required: false },
-  { key: "mounting_type", label: "Mounting Type (SMD/DIP)", required: false },
-  { key: "voltage", label: "Voltage", required: false },
-  { key: "material", label: "Material", required: false },
-  { key: "description", label: "Description", required: false },
+  { key: "item_code", label: "کد قطعه", required: true },
+  { key: "category", label: "دسته‌بندی اصلی", required: true },
+  { key: "sub_category", label: "زیردسته", required: false },
+  { key: "model", label: "مدل", required: true },
+  { key: "location", label: "محل نگهداری / کشو", required: true },
+  { key: "quantity", label: "موجودی اولیه", required: true },
+  { key: "price", label: "قیمت واحد", required: false },
+  { key: "size", label: "سایز / پکیج", required: false },
+  { key: "mounting_type", label: "نوع نصب (SMD/DIP)", required: false },
+  { key: "voltage", label: "ولتاژ", required: false },
+  { key: "material", label: "متریال", required: false },
+  { key: "description", label: "توضیحات", required: false },
 ];
+
+const STATUS_FA = {
+  new: "جدید",
+  existing: "موجود در سیستم",
+  duplicate: "تکراری",
+  invalid: "نامعتبر",
+  created: "ایجاد شد",
+  updated: "به‌روزرسانی شد",
+  skipped: "رد شد",
+  failed: "ناموفق",
+};
+
+const POLICY_EXPLANATION_FA = {
+  skip: "سیاست امن پیش‌فرض: فقط کدهای قطعه جدید ایجاد می‌شوند و موجودی اولیه آن‌ها از طریق تراکنش OPENING ثبت می‌شود (با مقداردهی میانگین موزون و آخرین قیمت خرید در صورت وجود قیمت). اقلامی که از قبل در سیستم وجود دارند نادیده گرفته می‌شوند و هیچ تغییری در موجودی یا قیمت آن‌ها ایجاد نخواهد شد.",
+  update_metadata: "اقلام جدید ایجاد شده و موجودی اولیه آن‌ها از طریق تراکنش OPENING ثبت می‌شود. برای کدهای تکراری موجود در سیستم، فقط مشخصات فنی قطعه به‌روزرسانی می‌شود و موجودی فعلی، قیمت‌ها و تاریخچه تراکنش‌های OPENING هرگز بازنویسی نخواهند شد.",
+};
 
 let uploadId = null;
 let lastPreview = null;
 let rowFilterStatus = "ALL";
+
+function translateImportMessage(msg) {
+  if (!msg) return "";
+  const text = String(msg);
+  if (/Missing item_code/i.test(text)) return "کد قطعه وارد نشده است.";
+  if (/Missing category/i.test(text)) return "دسته‌بندی اصلی وارد نشده است.";
+  if (/Missing model/i.test(text)) return "مدل قطعه وارد نشده است.";
+  if (/Missing location/i.test(text)) return "محل نگهداری وارد نشده است.";
+  const mountMatch = text.match(/Invalid mounting type '([^']+)'/i);
+  if (mountMatch) {
+    return `نوع نصب '${mountMatch[1]}' نامعتبر است (مقادیر مجاز: SMD یا DIP).`;
+  }
+  if (/Duplicate item_code/i.test(text)) {
+    return "کد قطعه در فایل اکسل تکراری است.";
+  }
+  if (/Quantity is 0:/i.test(text)) {
+    return "مقدار صفر است: قطعه با موجودی ۰ ایجاد می‌شود و تراکنش OPENING ثبت نخواهد شد.";
+  }
+  if (/Price will not apply because quantity is 0/i.test(text)) {
+    return "به دلیل صفر بودن تعداد، قیمت اعمال نمی‌شود.";
+  }
+  if (/Existing stock .* will NOT be altered/i.test(text)) {
+    return "فقط مشخصات فنی به‌روزرسانی می‌شود؛ موجودی و تراکنش‌ها تغییر نمی‌کنند.";
+  }
+  if (/Already exists .* row will be skipped/i.test(text)) {
+    return "در سیستم موجود است؛ این ردیف نادیده گرفته می‌شود.";
+  }
+  if (/Existing item skipped per import policy/i.test(text)) {
+    return "بر اساس سیاست انتخابی، قلم موجود نادیده گرفته شد.";
+  }
+  if (/Specifications updated; stock and transactions unchanged/i.test(text)) {
+    return "مشخصات به‌روزرسانی شد؛ موجودی و تراکنش‌ها بدون تغییر ماندند.";
+  }
+  if (/quantity must be/i.test(text)) {
+    return "مقدار تعداد باید یک عدد صحیح نامنفی باشد.";
+  }
+  if (/price must be/i.test(text)) {
+    return "قیمت باید یک عدد معتبر و نامنفی باشد.";
+  }
+  return translateServerError(text);
+}
 
 function switchExcelTab(tabName) {
   document.querySelectorAll("[data-excel-tab]").forEach((b) => {
@@ -43,7 +100,7 @@ function renderMappingControls(info) {
 
   grid.innerHTML = IMPORT_FIELDS.map((f) => {
     const opts = [
-      `<option value="">${f.required ? "Select column..." : "(Not Mapped)"}</option>`,
+      `<option value="">${f.required ? "انتخاب ستون..." : "(نگاشت نشده)"}</option>`,
       ...headers.map(
         (h) =>
           `<option value="${escapeHtml(h)}" ${suggested[f.key] === h ? "selected" : ""}>${escapeHtml(h)}</option>`
@@ -77,7 +134,7 @@ function statusBadge(status) {
     skipped: "badge-neutral",
     failed: "badge-danger",
   };
-  return `<span class="badge ${map[status] || "badge-neutral"}">${escapeHtml(status)}</span>`;
+  return `<span class="badge ${map[status] || "badge-neutral"}">${escapeHtml(STATUS_FA[status] || status)}</span>`;
 }
 
 function renderPreview(preview) {
@@ -85,39 +142,41 @@ function renderPreview(preview) {
   document.getElementById("imp-preview-section").classList.remove("hidden");
   document.getElementById("imp-result-section").classList.add("hidden");
 
+  const policyText = POLICY_EXPLANATION_FA[preview.existing_policy] || preview.policy_explanation;
   document.getElementById("imp-policy-banner").innerHTML = `
-    <strong>Import Policy Notice:</strong> ${escapeHtml(preview.policy_explanation)}
+    <strong>سیاست ورود اطلاعات:</strong> ${escapeHtml(policyText)}
   `;
 
   const s = preview.summary;
   document.getElementById("imp-preview-kpis").innerHTML = `
-    <div class="card kpi-card"><span class="kpi-label">Total Rows</span><span class="kpi-value">${fmtQty(s.total_rows)}</span></div>
-    <div class="card kpi-card"><span class="kpi-label">New Items Ready</span><span class="kpi-value text-success">${fmtQty(s.valid_new_rows)}</span><span class="kpi-note">${fmtQty(s.zero_quantity_new_rows)} at zero qty</span></div>
-    <div class="card kpi-card"><span class="kpi-label">Existing Items</span><span class="kpi-value">${fmtQty(s.existing_rows)}</span><span class="kpi-note">Skipped: ${fmtQty(s.existing_skipped_rows)} • Spec update: ${fmtQty(s.existing_updated_rows)}</span></div>
-    <div class="card kpi-card"><span class="kpi-label">Duplicate Codes</span><span class="kpi-value ${s.duplicate_rows > 0 ? "text-warning" : ""}">${fmtQty(s.duplicate_rows)}</span></div>
-    <div class="card kpi-card"><span class="kpi-label">Invalid / Missing</span><span class="kpi-value ${s.invalid_rows > 0 ? "text-danger" : ""}">${fmtQty(s.invalid_rows)}</span><span class="kpi-note">${fmtQty(s.missing_category_rows)} missing category</span></div>
-    <div class="card kpi-card"><span class="kpi-label">Categories To Create</span><span class="kpi-value">${fmtQty(s.categories_to_create)} / ${fmtQty(s.subcategories_to_create)}</span><span class="kpi-note">Main / Subcategories</span></div>
+    <div class="card kpi-card"><span class="kpi-label">کل ردیف‌های اکسل</span><span class="kpi-value">${fmtQty(s.total_rows)}</span></div>
+    <div class="card kpi-card"><span class="kpi-label">اقلام جدید آماده ثبت</span><span class="kpi-value text-success">${fmtQty(s.valid_new_rows)}</span><span class="kpi-note">${fmtQty(s.zero_quantity_new_rows)} قلم با موجودی صفر</span></div>
+    <div class="card kpi-card"><span class="kpi-label">اقلام موجود در سیستم</span><span class="kpi-value">${fmtQty(s.existing_rows)}</span><span class="kpi-note">رد شده: ${fmtQty(s.existing_skipped_rows)} • به‌روزرسانی مشخصات: ${fmtQty(s.existing_updated_rows)}</span></div>
+    <div class="card kpi-card kpi-card-accent"><span class="kpi-label">کدهای تکراری در فایل</span><span class="kpi-value ${s.duplicate_rows > 0 ? "text-warning" : ""}">${fmtQty(s.duplicate_rows)}</span></div>
+    <div class="card kpi-card"><span class="kpi-label">نامعتبر / ناقص</span><span class="kpi-value ${s.invalid_rows > 0 ? "text-danger" : ""}">${fmtQty(s.invalid_rows)}</span><span class="kpi-note">${fmtQty(s.missing_category_rows)} ردیف بدون دسته‌بندی</span></div>
+    <div class="card kpi-card kpi-card-accent"><span class="kpi-label">دسته‌بندی‌های جدید</span><span class="kpi-value">${fmtQty(s.categories_to_create)} / ${fmtQty(s.subcategories_to_create)}</span><span class="kpi-note">دسته اصلی / زیردسته</span></div>
   `;
 
   const catPlanBox = document.getElementById("imp-cat-plan");
   if (!preview.category_plan || !preview.category_plan.length) {
-    catPlanBox.innerHTML = `<span class="text-muted">No new categories or subcategories to populate from valid rows.</span>`;
+    catPlanBox.innerHTML = `<span class="text-muted">هیچ دسته‌بندی یا زیردسته جدیدی از ردیف‌های معتبر ایجاد نمی‌شود.</span>`;
   } else {
     catPlanBox.innerHTML = preview.category_plan
       .map((p) => {
+        const pLabel = p.status === "new" ? "جدید" : "موجود";
         const subs = (p.subcategories || [])
           .map(
             (sub) =>
               `<span class="badge ${sub.status === "new" ? "badge-success" : "badge-neutral"}">${escapeHtml(
                 sub.name
-              )} (${sub.status})</span>`
+              )} (${sub.status === "new" ? "جدید" : "موجود"})</span>`
           )
           .join(" ");
         return `
         <div style="padding:8px 0;border-bottom:1px solid var(--border-color);display:flex;flex-wrap:wrap;gap:8px;align-items:center;">
           <strong>${escapeHtml(p.name)}</strong>
-          <span class="badge ${p.status === "new" ? "badge-info" : "badge-neutral"}">${p.status}</span>
-          ${subs ? `<span class="text-muted">→</span> ${subs}` : ""}
+          <span class="badge ${p.status === "new" ? "badge-info" : "badge-neutral"}">${pLabel}</span>
+          ${subs ? `<span class="text-muted">←</span> ${subs}` : ""}
         </div>`;
       })
       .join("");
@@ -134,7 +193,7 @@ function renderPreviewRows() {
   );
   const tbody = document.getElementById("imp-preview-tbody");
   if (!rows.length) {
-    tbody.innerHTML = `<tr><td colspan="10" class="empty-state">No rows match selected status.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="10" class="empty-state">ردیفی با این وضعیت وجود ندارد.</td></tr>`;
     return;
   }
 
@@ -142,8 +201,8 @@ function renderPreviewRows() {
     .map((r) => {
       const catText = r.sub_category ? `${r.category || "?"} > ${r.sub_category}` : r.category || "—";
       const msgs = [
-        ...(r.errors || []).map((e) => `<div class="text-danger">${escapeHtml(e)}</div>`),
-        ...(r.warnings || []).map((w) => `<div class="text-warning">${escapeHtml(w)}</div>`),
+        ...(r.errors || []).map((e) => `<div class="text-danger">${escapeHtml(translateImportMessage(e))}</div>`),
+        ...(r.warnings || []).map((w) => `<div class="text-warning">${escapeHtml(translateImportMessage(w))}</div>`),
       ].join("");
       return `
       <tr>
@@ -156,7 +215,7 @@ function renderPreviewRows() {
         <td>${escapeHtml(r.location || "—")}</td>
         <td class="text-right num">${r.quantity !== null && r.quantity !== undefined ? fmtQty(r.quantity) : "—"}</td>
         <td class="text-right num">${fmtCost(r.price, "—")}</td>
-        <td style="font-size:0.82rem;">${msgs || `<span class="text-success">Ready</span>`}</td>
+        <td style="font-size:0.82rem;">${msgs || `<span class="text-success">آماده ثبت</span>`}</td>
       </tr>`;
     })
     .join("");
@@ -168,11 +227,11 @@ function renderImportResults(res) {
 
   const s = res.summary;
   document.getElementById("imp-result-kpis").innerHTML = `
-    <div class="card kpi-card"><span class="kpi-label">Total Excel Rows</span><span class="kpi-value">${fmtQty(s.total_rows)}</span></div>
-    <div class="card kpi-card"><span class="kpi-label">Imported Items</span><span class="kpi-value text-success">${fmtQty(s.imported_items)}</span><span class="kpi-note">Created: ${fmtQty(s.created_items)} • Updated: ${fmtQty(s.updated_items)}</span></div>
-    <div class="card kpi-card"><span class="kpi-label">OPENING Transactions</span><span class="kpi-value">${fmtQty(s.opening_transactions_created)}</span><span class="kpi-note">Populated WAC &amp; LPC</span></div>
-    <div class="card kpi-card"><span class="kpi-label">Categories Created</span><span class="kpi-value">${fmtQty(s.categories_created)} / ${fmtQty(s.subcategories_created)}</span><span class="kpi-note">Main / Subcategories</span></div>
-    <div class="card kpi-card"><span class="kpi-label">Skipped / Failed</span><span class="kpi-value ${s.failed_rows > 0 ? "text-danger" : ""}">${fmtQty(s.skipped_items)} / ${fmtQty(s.failed_rows)}</span><span class="kpi-note">Duplicates: ${fmtQty(s.duplicate_rows)} • Invalid: ${fmtQty(s.invalid_or_missing_rows)}</span></div>
+    <div class="card kpi-card"><span class="kpi-label">کل ردیف‌های اکسل</span><span class="kpi-value">${fmtQty(s.total_rows)}</span></div>
+    <div class="card kpi-card"><span class="kpi-label">اقلام واردشده</span><span class="kpi-value text-success">${fmtQty(s.imported_items)}</span><span class="kpi-note">ایجاد شده: ${fmtQty(s.created_items)} • به‌روزرسانی شده: ${fmtQty(s.updated_items)}</span></div>
+    <div class="card kpi-card kpi-card-accent"><span class="kpi-label">تراکنش‌های OPENING</span><span class="kpi-value">${fmtQty(s.opening_transactions_created)}</span><span class="kpi-note">مقداردهی WAC و آخرین خرید</span></div>
+    <div class="card kpi-card"><span class="kpi-label">دسته‌بندی‌های ایجادشده</span><span class="kpi-value">${fmtQty(s.categories_created)} / ${fmtQty(s.subcategories_created)}</span><span class="kpi-note">دسته اصلی / زیردسته</span></div>
+    <div class="card kpi-card"><span class="kpi-label">رد شده / ناموفق</span><span class="kpi-value ${s.failed_rows > 0 ? "text-danger" : ""}">${fmtQty(s.skipped_items)} / ${fmtQty(s.failed_rows)}</span><span class="kpi-note">تکراری: ${fmtQty(s.duplicate_rows)} • نامعتبر: ${fmtQty(s.invalid_or_missing_rows)}</span></div>
   `;
 
   document.getElementById("imp-result-tbody").innerHTML = (res.results || [])
@@ -185,7 +244,7 @@ function renderImportResults(res) {
       <td>${statusBadge(r.status)}</td>
       <td class="text-right num">${r.quantity !== undefined && r.quantity !== null ? fmtQty(r.quantity) : "—"}</td>
       <td class="text-right num">${fmtCost(r.price, "—")}</td>
-      <td class="text-secondary">${escapeHtml(r.reason || (r.opening_transaction_id ? `OPENING Tx #${r.opening_transaction_id}` : "Item created (0 stock)"))}</td>
+      <td class="text-secondary">${escapeHtml(r.reason ? translateImportMessage(r.reason) : (r.opening_transaction_id ? `تراکنش OPENING شماره ${r.opening_transaction_id}` : "قطعه ایجاد شد (موجودی ۰)"))}</td>
     </tr>`
     )
     .join("");
@@ -202,7 +261,7 @@ async function handleImportUpload(file) {
     document.getElementById("imp-config-panel").classList.remove("hidden");
     document.getElementById("imp-preview-section").classList.add("hidden");
     document.getElementById("imp-result-section").classList.add("hidden");
-    toast(`Uploaded ${file.name} (${info.total_data_rows} data rows).`, "success");
+    toast(`فایل ${file.name} (${info.total_data_rows} ردیف داده) بارگذاری شد.`, "success");
   } catch (err) {
     toast(err.message, "error");
   }
@@ -237,7 +296,6 @@ document.addEventListener("DOMContentLoaded", async () => {
     btn.addEventListener("click", () => switchExcelTab(btn.dataset.excelTab));
   });
 
-  // Import listeners
   const dropzone = document.getElementById("imp-dropzone");
   const fileInput = document.getElementById("imp-file-input");
   dropzone.addEventListener("click", () => fileInput.click());
@@ -297,7 +355,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (!uploadId) return;
     const btn = e.currentTarget;
     btn.disabled = true;
-    btn.textContent = "Importing...";
+    btn.textContent = "در حال ورود اطلاعات...";
     try {
       const res = await apiFetch("/api/import/confirm", {
         method: "POST",
@@ -310,15 +368,14 @@ document.addEventListener("DOMContentLoaded", async () => {
       });
       uploadId = null;
       renderImportResults(res);
-      toast(`Import finished: ${res.summary.imported_items} item(s) imported.`, "success");
+      toast(`ورود اطلاعات با موفقیت انجام شد: ${res.summary.imported_items} قلم ثبت گردید.`, "success");
     } catch (err) {
       toast(err.message, "error");
       btn.disabled = false;
-      btn.textContent = "Confirm & Execute Import";
+      btn.textContent = "تایید و اجرای نهایی ورود اطلاعات";
     }
   });
 
-  // Export initialization
   try {
     const [catData, userData] = await Promise.all([
       apiFetch("/api/categories"),
@@ -346,7 +403,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       const params = { ...getInventoryExportFilters(), page: 1, page_size: 1 };
       const data = await apiFetch(`/api/items${buildQuery(params)}`);
       document.getElementById("ex-inv-count-msg").textContent =
-        `${fmtQty(data.total)} item(s) match these export filters.`;
+        `${fmtQty(data.total)} قلم قطعه با فیلترهای انتخابی منطبق است.`;
     } catch (err) {
       toast(err.message, "error");
     }
@@ -356,7 +413,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     try {
       const qs = buildQuery(getInventoryExportFilters());
       await downloadExcel(`/api/export/inventory${qs}`, {}, "inventory_report.xlsx");
-      toast("Inventory Excel exported.", "success");
+      toast("فایل اکسل موجودی دریافت شد.", "success");
     } catch (err) {
       toast(err.message, "error");
     }
@@ -384,7 +441,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     });
     try {
       await downloadExcel(`/api/export/transactions${qs}`, {}, "transactions_report.xlsx");
-      toast("Movement Excel exported.", "success");
+      toast("گزارش اکسل گردش‌ها دریافت شد.", "success");
     } catch (err) {
       toast(err.message, "error");
     }

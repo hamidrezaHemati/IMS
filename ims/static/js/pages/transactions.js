@@ -25,7 +25,7 @@ function getFilters(page = 1) {
 async function loadTransactions(page = 1) {
   const tbody = document.getElementById("h-tbody");
   const mobile = document.getElementById("h-mobile");
-  tbody.innerHTML = `<tr><td colspan="11" class="empty-state">Loading...</td></tr>`;
+  tbody.innerHTML = `<tr><td colspan="11" class="empty-state">در حال بارگذاری...</td></tr>`;
   mobile.innerHTML = "";
 
   try {
@@ -33,8 +33,8 @@ async function loadTransactions(page = 1) {
     const rows = data.transactions || [];
 
     if (!rows.length) {
-      tbody.innerHTML = `<tr><td colspan="11" class="empty-state">No transactions found matching filters.</td></tr>`;
-      mobile.innerHTML = `<div class="empty-state">No transactions found.</div>`;
+      tbody.innerHTML = `<tr><td colspan="11" class="empty-state">تراکنشی مطابق فیلترهای انتخابی یافت نشد.</td></tr>`;
+      mobile.innerHTML = `<div class="empty-state">تراکنشی یافت نشد.</div>`;
     } else {
       tbody.innerHTML = rows
         .map(
@@ -46,10 +46,10 @@ async function loadTransactions(page = 1) {
           <td>${escapeHtml(t.model)}</td>
           <td>${escapeHtml(t.user_name)}</td>
           <td class="text-right num"><strong>${fmtQty(t.quantity)}</strong></td>
-          <td class="text-right num">${fmtQty(t.stock_before)} → <strong>${fmtQty(t.stock_after)}</strong></td>
+          <td class="text-right num ltr">${fmtQty(t.stock_before)} → <strong>${fmtQty(t.stock_after)}</strong></td>
           <td class="text-right num">${fmtCost(t.price, "—")}</td>
-          <td class="text-right num">${fmtCost(t.unit_cost_snapshot, "Unknown")}</td>
-          <td class="text-right num">${fmtCost(t.transaction_cost_snapshot, "Unknown")}</td>
+          <td class="text-right num">${fmtCost(t.unit_cost_snapshot, "نامشخص")}</td>
+          <td class="text-right num">${fmtCost(t.transaction_cost_snapshot, "نامشخص")}</td>
           <td class="text-secondary">${escapeHtml(t.description || "—")}</td>
         </tr>`
         )
@@ -67,14 +67,14 @@ async function loadTransactions(page = 1) {
             </div>
             <div class="text-right num">
               <strong>${fmtQty(t.quantity)}</strong>
-              <div class="text-muted" style="font-size:0.78rem;">${fmtQty(t.stock_before)} → ${fmtQty(t.stock_after)}</div>
+              <div class="text-muted ltr" style="font-size:0.78rem;">${fmtQty(t.stock_before)} → ${fmtQty(t.stock_after)}</div>
             </div>
           </div>
           <div class="mobile-item-meta">
-            <div><span class="text-muted">User:</span> ${escapeHtml(t.user_name)}</div>
-            <div><span class="text-muted">Date:</span> ${escapeHtml(fmtDate(t.created_at))}</div>
-            <div><span class="text-muted">Unit Cost:</span> <span class="num">${fmtCost(t.unit_cost_snapshot, "Unknown")}</span></div>
-            <div><span class="text-muted">Total:</span> <span class="num">${fmtCost(t.transaction_cost_snapshot, "Unknown")}</span></div>
+            <div><span class="text-muted">کاربر:</span> ${escapeHtml(t.user_name)}</div>
+            <div><span class="text-muted">تاریخ:</span> ${escapeHtml(fmtDate(t.created_at))}</div>
+            <div><span class="text-muted">بهای واحد:</span> <span class="num">${fmtCost(t.unit_cost_snapshot, "نامشخص")}</span></div>
+            <div><span class="text-muted">جمع ارزش:</span> <span class="num">${fmtCost(t.transaction_cost_snapshot, "نامشخص")}</span></div>
           </div>
           ${t.description ? `<div class="text-secondary" style="font-size:0.82rem;">${escapeHtml(t.description)}</div>` : ""}
         </div>`
@@ -133,7 +133,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     delete f.page_size;
     try {
       await downloadExcel(`/api/export/transactions${buildQuery(f)}`, {}, "transactions_report.xlsx");
-      toast("Transaction report exported.", "success");
+      toast("گزارش اکسل تراکنش‌ها دانلود شد.", "success");
     } catch (err) {
       toast(err.message, "error");
     }

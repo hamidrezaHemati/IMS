@@ -1,5 +1,5 @@
 /**
- * Centralized API fetch and file download helpers.
+ * ابزارهای متمرکز ارتباط با API و دریافت فایل اکسل
  */
 
 export async function apiFetch(url, options = {}) {
@@ -18,7 +18,7 @@ export async function apiFetch(url, options = {}) {
 
   if (response.status === 401 && !url.startsWith("/api/auth/login")) {
     window.location.href = "/login";
-    throw new Error("Authentication required.");
+    throw new Error("احراز هویت الزامی است.");
   }
 
   const contentType = response.headers.get("content-type") || "";
@@ -27,12 +27,12 @@ export async function apiFetch(url, options = {}) {
     payload = await response.json();
   } else if (!response.ok) {
     const text = await response.text();
-    throw new Error(text || `Request failed (${response.status})`);
+    throw new Error(text || `خطا در انجام درخواست (${response.status})`);
   }
 
   if (!response.ok) {
     const err = new Error(
-      (payload && payload.error) || `Request failed (${response.status})`
+      (payload && payload.error) || `خطا در انجام درخواست (${response.status})`
     );
     err.status = response.status;
     err.code = payload && payload.code;
@@ -67,15 +67,15 @@ export async function downloadExcel(url, options = {}, fallbackName = "report.xl
   const response = await fetch(url, opts);
   if (response.status === 401) {
     window.location.href = "/login";
-    throw new Error("Authentication required.");
+    throw new Error("احراز هویت الزامی است.");
   }
   if (!response.ok) {
     const contentType = response.headers.get("content-type") || "";
     if (contentType.includes("application/json")) {
       const data = await response.json();
-      throw new Error(data.error || "Export failed.");
+      throw new Error(data.error || "دریافت فایل اکسل ناموفق بود.");
     }
-    throw new Error(`Export failed (${response.status})`);
+    throw new Error(`دریافت فایل اکسل ناموفق بود (${response.status})`);
   }
 
   const blob = await response.blob();

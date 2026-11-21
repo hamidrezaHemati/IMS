@@ -13,7 +13,7 @@ async function loadAnalytics() {
     const txBody = document.getElementById("r-tx-tbody");
     const moves = data.movement_summary || [];
     if (!moves.length) {
-      txBody.innerHTML = `<tr><td colspan="5" class="empty-state">No transactions in selected date range.</td></tr>`;
+      txBody.innerHTML = `<tr><td colspan="5" class="empty-state">تراکنشی در بازه انتخابی ثبت نشده است.</td></tr>`;
     } else {
       txBody.innerHTML = moves
         .map(
@@ -25,8 +25,8 @@ async function loadAnalytics() {
           <td class="text-right num">${fmtCost(m.known_cost_total)}</td>
           <td>${
             m.cost_complete
-              ? `<span class="badge badge-success">Complete</span>`
-              : `<span class="badge badge-warning">${fmtQty(m.unknown_cost_tx_count)} unknown</span>`
+              ? `<span class="badge badge-success">کامل</span>`
+              : `<span class="badge badge-warning">${fmtQty(m.unknown_cost_tx_count)} بدون قیمت</span>`
           }</td>
         </tr>`
         )
@@ -36,7 +36,7 @@ async function loadAnalytics() {
     const catBody = document.getElementById("r-cat-tbody");
     const cats = data.category_breakdown || [];
     if (!cats.length) {
-      catBody.innerHTML = `<tr><td colspan="7" class="empty-state">No inventory items registered yet.</td></tr>`;
+      catBody.innerHTML = `<tr><td colspan="7" class="empty-state">هنوز هیچ قطعه‌ای در انبار ثبت نشده است.</td></tr>`;
     } else {
       catBody.innerHTML = cats
         .map(
@@ -49,11 +49,11 @@ async function loadAnalytics() {
           <td class="text-right num">${fmtQty(c.zero_stock_count)}</td>
           <td class="text-right num">
             ${fmtCost(c.wac_known_value)}
-            ${!c.wac_complete ? `<div class="text-warning" style="font-size:0.75rem;">Incomplete (${c.wac_missing_cost_items} missing)</div>` : ""}
+            ${!c.wac_complete ? `<div class="text-warning" style="font-size:0.75rem;">ناقص (${c.wac_missing_cost_items} مورد بدون قیمت)</div>` : ""}
           </td>
           <td class="text-right num">
             ${fmtCost(c.lpc_known_value)}
-            ${!c.lpc_complete ? `<div class="text-warning" style="font-size:0.75rem;">Incomplete (${c.lpc_missing_cost_items} missing)</div>` : ""}
+            ${!c.lpc_complete ? `<div class="text-warning" style="font-size:0.75rem;">ناقص (${c.lpc_missing_cost_items} مورد بدون قیمت)</div>` : ""}
           </td>
         </tr>`
         )
@@ -75,7 +75,7 @@ document.addEventListener("DOMContentLoaded", () => {
   document.getElementById("r-dl-inv").addEventListener("click", async () => {
     try {
       await downloadExcel("/api/export/inventory", {}, "inventory_report.xlsx");
-      toast("Full inventory Excel downloaded.", "success");
+      toast("فایل اکسل کامل موجودی دانلود شد.", "success");
     } catch (err) {
       toast(err.message, "error");
     }
@@ -88,7 +88,7 @@ document.addEventListener("DOMContentLoaded", () => {
     });
     try {
       await downloadExcel(`/api/export/transactions${qs}`, {}, "transactions_report.xlsx");
-      toast("Movements Excel downloaded.", "success");
+      toast("فایل اکسل گردش‌های انبار دانلود شد.", "success");
     } catch (err) {
       toast(err.message, "error");
     }

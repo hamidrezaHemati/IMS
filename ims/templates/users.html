@@ -1,40 +1,40 @@
 {% extends "base.html" %}
-{% block title %}Users &amp; Settings — Component IMS{% endblock %}
-{% block mobile_title %}Users / Settings{% endblock %}
+{% block title %}کاربران و تنظیمات — سامانه مدیریت انبار{% endblock %}
+{% block mobile_title %}کاربران و تنظیمات{% endblock %}
 
 {% block content %}
 <div class="page-header">
   <div>
-    <h1 class="page-title">Users &amp; Settings</h1>
-    <p class="page-subtitle">Manage internal company accounts and update your password</p>
+    <h1 class="page-title">کاربران داخلی و تنظیمات</h1>
+    <p class="page-subtitle">مدیریت حساب‌های کاربری همکاران و تغییر رمز عبور</p>
   </div>
 </div>
 
 <div class="grid grid-2" style="margin-bottom:18px;">
   <section class="card">
     <div class="card-header">
-      <h2 class="card-title">Add Internal User</h2>
+      <h2 class="card-title">افزودن کاربر جدید</h2>
     </div>
     <div class="card-body">
       <form id="add-user-form" class="form-grid">
         <div class="field">
-          <label for="u-first">First Name *</label>
+          <label for="u-first">نام *</label>
           <input id="u-first" class="input" required maxlength="100">
         </div>
         <div class="field">
-          <label for="u-last">Last Name *</label>
+          <label for="u-last">نام خانوادگی *</label>
           <input id="u-last" class="input" required maxlength="100">
         </div>
         <div class="field">
-          <label for="u-username">Username *</label>
-          <input id="u-username" class="input" required maxlength="80">
+          <label for="u-username">نام کاربری *</label>
+          <input id="u-username" class="input ltr" required maxlength="80">
         </div>
         <div class="field">
-          <label for="u-password">Password *</label>
-          <input id="u-password" class="input" type="password" required>
+          <label for="u-password">رمز عبور *</label>
+          <input id="u-password" class="input ltr" type="password" required>
         </div>
         <div style="grid-column:1 / -1;display:flex;justify-content:flex-end;">
-          <button type="submit" class="btn btn-primary">Create User</button>
+          <button type="submit" class="btn btn-primary">ایجاد کاربر</button>
         </div>
       </form>
     </div>
@@ -42,24 +42,24 @@
 
   <section class="card">
     <div class="card-header">
-      <h2 class="card-title">Change My Password</h2>
+      <h2 class="card-title">تغییر رمز عبور من</h2>
     </div>
     <div class="card-body">
       <form id="change-pw-form" class="form-grid">
         <div class="field" style="grid-column:1 / -1;">
-          <label for="pw-current">Current Password *</label>
-          <input id="pw-current" class="input" type="password" required>
+          <label for="pw-current">رمز عبور فعلی *</label>
+          <input id="pw-current" class="input ltr" type="password" required>
         </div>
         <div class="field">
-          <label for="pw-new">New Password *</label>
-          <input id="pw-new" class="input" type="password" required>
+          <label for="pw-new">رمز عبور جدید *</label>
+          <input id="pw-new" class="input ltr" type="password" required>
         </div>
         <div class="field">
-          <label for="pw-confirm">Confirm New Password *</label>
-          <input id="pw-confirm" class="input" type="password" required>
+          <label for="pw-confirm">تکرار رمز عبور جدید *</label>
+          <input id="pw-confirm" class="input ltr" type="password" required>
         </div>
         <div style="grid-column:1 / -1;display:flex;justify-content:flex-end;">
-          <button type="submit" class="btn btn-primary">Update Password</button>
+          <button type="submit" class="btn btn-primary">به‌روزرسانی رمز عبور</button>
         </div>
       </form>
     </div>
@@ -68,21 +68,21 @@
 
 <section class="card">
   <div class="card-header">
-    <h2 class="card-title">Registered Users</h2>
+    <h2 class="card-title">کاربران ثبت‌شده در سامانه</h2>
   </div>
   <div class="table-wrap">
     <table class="table">
       <thead>
         <tr>
-          <th>ID</th>
-          <th>Full Name</th>
-          <th>Username</th>
-          <th class="text-right">Transactions Recorded</th>
-          <th>Created</th>
+          <th>شناسه</th>
+          <th>نام و نام خانوادگی</th>
+          <th>نام کاربری</th>
+          <th class="text-right">تعداد تراکنش‌های ثبت‌شده</th>
+          <th>تاریخ ایجاد</th>
         </tr>
       </thead>
       <tbody id="users-tbody">
-        <tr><td colspan="5" class="empty-state">Loading users...</td></tr>
+        <tr><td colspan="5" class="empty-state">در حال بارگذاری کاربران...</td></tr>
       </tbody>
     </table>
   </div>
