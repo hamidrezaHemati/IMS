@@ -23,66 +23,79 @@ import sys
 import getpass
 import psycopg2
 from psycopg2 import sql
+import yaml
+
+CONFIG_PATH = os.path.join(os.path.dirname(__file__), "db_config.yaml")
 
 
-DB_NAME = "IMS_db"
+def get_maintenance_connection_kwargs():
+    params = get_connection_kwargs().copy()
 
-PG_HOST = os.getenv("PGHOST", "localhost")
-PG_PORT = int(os.getenv("PGPORT", "5432"))
-PG_USER = os.getenv("PGUSER", "postgres")
-PG_PASSWORD = os.getenv("PGPASSWORD") or None
-ADMIN_DB = os.getenv("PGADMIN_DB", "postgres")
+    # Connect to the default PostgreSQL maintenance database
+    params["dbname"] = "postgres"
 
+    return params
 
-def get_connection_kwargs(dbname):
+def get_connection_kwargs():
     """Return connection settings. Prompt for a password if not supplied."""
-    global PG_PASSWORD
-    if PG_PASSWORD is None:
-        PG_PASSWORD = getpass.getpass(
-            f"Password for PostgreSQL user '{PG_USER}': "
+    if not os.path.exists(CONFIG_PATH):
+        raise FileNotFoundError(
+            f"Configuration file not found: {CONFIG_PATH}"
         )
+
+    with open(CONFIG_PATH, "r", encoding="utf-8") as file:
+        config = yaml.safe_load(file) or {}
+
+    db_params = config.get("database")
+    if not db_params:
+        raise KeyError(
+            "The YAML config must contain a 'database' section."
+        )
+
+    required_keys = ("host", "port", "database", "user", "password")
+    missing = [key for key in required_keys if key not in db_params]
+
+    if missing:
+        raise KeyError(
+            f"Missing database config keys: {', '.join(missing)}"
+        )
+        return False 
+        
     return {
-        "host": PG_HOST,
-        "port": PG_PORT,
-        "user": PG_USER,
-        "password": PG_PASSWORD,
-        "dbname": dbname,
+        "host": db_params["host"],
+        "port": db_params["port"],
+        "user": db_params["user"],
+        "password": db_params["password"],
+        "dbname": db_params["database"],
         "connect_timeout": 10,
     }
 
 
-def create_database():
-    """
-    Connect to the maintenance database and create IMS_db if it does not exist.
-    CREATE DATABASE must run outside a transaction, so autocommit is enabled.
-    """
+def create_database(cur):
+    """Create the target database if it does not exist."""
+
+    db_name = get_connection_kwargs()["dbname"]
+
     print("[1/3] Checking/creating database ...")
 
-    conn = psycopg2.connect(**get_connection_kwargs(ADMIN_DB))
-    conn.autocommit = True
+    cur.execute(
+        "SELECT 1 FROM pg_database WHERE datname = %s;",
+        (db_name,)
+    )
 
-    try:
-        with conn.cursor() as cur:
-            cur.execute(
-                "SELECT 1 FROM pg_database WHERE datname = %s;",
-                (DB_NAME,),
+    exists = cur.fetchone() is not None
+
+    if exists:
+        print(f"Database {db_name!r} already exists; keeping it.")
+    else:
+        cur.execute(
+            sql.SQL("CREATE DATABASE {} ENCODING 'UTF8'").format(
+                sql.Identifier(db_name)
             )
-            exists = cur.fetchone() is not None
+        )
+        print(f"Database {db_name!r} created.")
 
-            if exists:
-                print(f"      Database {DB_NAME!r} already exists; keeping it.")
-            else:
-                cur.execute(
-                    sql.SQL("CREATE DATABASE {} ENCODING 'UTF8'").format(
-                        sql.Identifier(DB_NAME)
-                    )
-                )
-                print(f"      Database {DB_NAME!r} created.")
-    finally:
-        conn.close()
-
-
-def create_tables():
+def create_tables(cur):
     """Create all application tables, constraints, and indexes."""
     print("[2/3] Creating tables and indexes ...")
 
@@ -121,7 +134,7 @@ def create_tables():
         mounting_type   VARCHAR(10) NULL,
         voltage         VARCHAR(80) NULL,
         material        VARCHAR(100) NULL,
-        location        VARCHAR(150) NULL,
+        location        VARCHAR(150) NOT NULL,
         description     TEXT NULL,
         created_at      TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
@@ -256,17 +269,13 @@ def create_tables():
         ON inventory_transaction(transaction_type, created_at DESC);
     """
 
-    conn = psycopg2.connect(**get_connection_kwargs(DB_NAME))
     try:
-        with conn:
-            with conn.cursor() as cur:
-                cur.execute(ddl)
+        cur.execute(ddl)
         print("      Tables, constraints, and indexes are ready.")
-    finally:
-        conn.close()
+    except Exception as error:
+        print(f"❌ Database Table Creator failed: {error}", file=sys.stderr)
 
-
-def create_triggers():
+def create_triggers(cur):
     """Create PostgreSQL trigger functions and attach triggers."""
     print("[3/3] Creating trigger functions and triggers ...")
 
@@ -568,40 +577,106 @@ def create_triggers():
     EXECUTE FUNCTION fn_validate_category_hierarchy();
     """
 
-    conn = psycopg2.connect(**get_connection_kwargs(DB_NAME))
     try:
-        with conn:
-            with conn.cursor() as cur:
-                cur.execute(ddl)
+        cur.execute(ddl)
         print("      Trigger functions and triggers are ready.")
-    finally:
-        conn.close()
+    except Exception as error:
+        print(f"❌ Database Trigger Creator failed: {error}", file=sys.stderr)
 
+def seed_initial_data(cursor):
+    
+    cursor.execute(
+        """
+        INSERT INTO app_user (
+            first_name,
+            last_name,
+            user_name,
+            password_hash
+        )
+        VALUES (%s, %s, %s, %s)
+        ON CONFLICT (user_name) DO NOTHING
+        RETURNING id;
+        """,
+        (
+            "admin",
+            "admin",
+            "admin",
+            "admin"
+        ),
+    )
 
 def main():
+
+    config = get_connection_kwargs()
+    db_name = config["dbname"]
+
     print("=" * 60)
     print("IMS PostgreSQL Database Initializer")
-    print(f"Target database: {DB_NAME}")
-    print(f"Server: {PG_HOST}:{PG_PORT}")
-    print(f"PostgreSQL user: {PG_USER}")
+    print(f"Target database: {db_name}")
+    print(f"Server: {config['host']}:{config['port']}")
+    print(f"PostgreSQL user: {config['user']}")
     print("=" * 60)
 
+    maintenance_conn = None
+    app_conn = None
+
     try:
-        create_database()
-        create_tables()
-        create_triggers()
+
+        # -------------------------------------------------
+        # STEP 1: Connect to PostgreSQL maintenance DB
+        # -------------------------------------------------
+
+        maintenance_conn = psycopg2.connect(
+            **get_maintenance_connection_kwargs()
+        )
+
+        maintenance_conn.autocommit = True
+
+        with maintenance_conn.cursor() as cur:
+            create_database(cur)
+
+        maintenance_conn.close()
+        maintenance_conn = None
+
+        # -------------------------------------------------
+        # STEP 2: Connect to the target database
+        # -------------------------------------------------
+
+        app_conn = psycopg2.connect(**config)
+
+        # -------------------------------------------------
+        # STEP 3: Create tables, triggers and initial data
+        # -------------------------------------------------
+
+        with app_conn:
+
+            with app_conn.cursor() as cur:
+
+                create_tables(cur)
+                create_triggers(cur)
+                seed_initial_data(cur)
 
         print("\nDatabase initialization completed successfully.")
-        print(f"You can now connect to database {DB_NAME!r}.")
-    except psycopg2.Error as exc:
-        print("\nDatabase initialization failed.")
-        print(f"PostgreSQL error: {exc}", file=sys.stderr)
-        sys.exit(1)
+        print(f"You can now connect to database {db_name!r}.")
+
     except Exception as exc:
+
         print("\nDatabase initialization failed.")
         print(f"Error: {exc}", file=sys.stderr)
+
         sys.exit(1)
+
+    finally:
+
+        if maintenance_conn is not None:
+            maintenance_conn.close()
+
+        if app_conn is not None:
+            app_conn.close()
+
+        print("Database connections closed.")
 
 
 if __name__ == "__main__":
     main()
+
