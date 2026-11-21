@@ -1,0 +1,140 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — Component IMS{% endblock %}
+{% block mobile_title %}Dashboard{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1 class="page-title">Inventory Dashboard</h1>
+    <p class="page-subtitle">Real-time component overview, valuations, and recent stock movements</p>
+  </div>
+</div>
+
+<!-- Quick Access Operations -->
+<div class="quick-actions">
+  <a class="quick-btn" href="{{ url_for('pages.new_transaction') }}">
+    <span class="quick-icon">+</span>
+    <span>New Transaction</span>
+  </a>
+  <a class="quick-btn" href="{{ url_for('pages.excel') }}#import">
+    <span class="quick-icon">↑</span>
+    <span>Initial Inventory Import</span>
+  </a>
+  <a class="quick-btn" href="{{ url_for('pages.bom') }}">
+    <span class="quick-icon">✓</span>
+    <span>BOM Calculator</span>
+  </a>
+  <a class="quick-btn" href="{{ url_for('pages.excel') }}#export">
+    <span class="quick-icon">↓</span>
+    <span>Export Reports</span>
+  </a>
+</div>
+
+<!-- KPI Cards -->
+<div id="dashboard-kpis" class="grid grid-kpi" style="margin-bottom:20px;">
+  <div class="card kpi-card"><span class="kpi-label">Loading metrics...</span></div>
+</div>
+
+<!-- Main Inventory Search & Table -->
+<section class="card" style="margin-bottom:20px;">
+  <div class="card-header">
+    <div>
+      <h2 class="card-title">Current Inventory</h2>
+      <p class="text-muted" style="font-size:0.82rem;">Click any component to inspect full specifications and transaction history</p>
+    </div>
+    <button type="button" id="dash-filter-toggle" class="btn btn-sm filter-toggle-mobile">Filters</button>
+  </div>
+
+  <div class="card-body" style="border-bottom:1px solid var(--border-color);">
+    <div id="dash-filters" class="filter-collapsible">
+      <div class="form-grid">
+        <div class="field">
+          <label for="d-search">Search</label>
+          <input id="d-search" class="input" type="search" placeholder="Code, model, location, size...">
+        </div>
+        <div class="field">
+          <label for="d-parent-cat">Category</label>
+          <select id="d-parent-cat" class="select"></select>
+        </div>
+        <div class="field">
+          <label for="d-sub-cat">Subcategory</label>
+          <select id="d-sub-cat" class="select"></select>
+        </div>
+        <div class="field">
+          <label for="d-mounting">Mounting</label>
+          <select id="d-mounting" class="select">
+            <option value="">All</option>
+            <option value="SMD">SMD</option>
+            <option value="DIP">DIP</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="d-location">Location / Drawer</label>
+          <input id="d-location" class="input" type="text" placeholder="e.g. E1">
+        </div>
+        <div class="field" style="justify-content:flex-end;">
+          <label class="checkbox-row">
+            <input id="d-zero" type="checkbox">
+            <span>Zero stock only</span>
+          </label>
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;">
+        <button type="button" id="d-apply-btn" class="btn btn-sm btn-primary">Apply</button>
+        <button type="button" id="d-reset-btn" class="btn btn-sm">Reset</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="table-wrap desktop-table-only">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Item Code</th>
+          <th>Category</th>
+          <th>Model</th>
+          <th>Size</th>
+          <th>Mounting</th>
+          <th>Location</th>
+          <th class="text-right">Qty</th>
+          <th class="text-right">Weighted Avg Cost</th>
+          <th class="text-right">Last Purchase Cost</th>
+        </tr>
+      </thead>
+      <tbody id="dash-items-tbody">
+        <tr><td colspan="9" class="empty-state">Loading inventory...</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div id="dash-items-mobile" class="mobile-list" style="padding:12px;"></div>
+  <div id="dash-pagination" class="pagination"></div>
+</section>
+
+<!-- Recent Movements & Recently Added Items -->
+<div class="grid grid-2">
+  <section class="card">
+    <div class="card-header">
+      <h2 class="card-title">Recent Inventory Movements</h2>
+      <a class="btn btn-sm" href="{{ url_for('pages.transactions') }}">View All</a>
+    </div>
+    <div id="dash-recent-tx" class="card-body">
+      <div class="empty-state">Loading movements...</div>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="card-header">
+      <h2 class="card-title">Recently Added Items</h2>
+      <a class="btn btn-sm" href="{{ url_for('pages.inventory') }}">Manage Items</a>
+    </div>
+    <div id="dash-recent-items" class="card-body">
+      <div class="empty-state">Loading items...</div>
+    </div>
+  </section>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script type="module" src="{{ url_for('static', filename='js/pages/dashboard.js') }}"></script>
+{% endblock %}

@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}IMS — Inventory Management System{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/tokens.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/base.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/layout.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/components.css') }}">
+</head>
+<body>
+  <div class="app-shell">
+    <!-- Mobile Topbar -->
+    <header class="mobile-topbar">
+      <div class="brand-mark">
+        <span class="brand-badge">IMS</span>
+        <div>
+          <div class="brand-title">{% block mobile_title %}Inventory System{% endblock %}</div>
+        </div>
+      </div>
+      <button
+        type="button"
+        id="sidebar-open-btn"
+        class="btn btn-icon"
+        aria-label="Open navigation menu"
+        aria-expanded="false"
+        aria-controls="app-sidebar"
+      >
+        ☰
+      </button>
+    </header>
+
+    <div id="sidebar-backdrop" class="sidebar-backdrop"></div>
+
+    <!-- Main Content -->
+    <main class="main-area">
+      {% block content %}{% endblock %}
+    </main>
+
+    <!-- Right-Aligned Navigation Sidebar -->
+    <aside id="app-sidebar" class="sidebar" aria-label="Primary Navigation">
+      <div class="sidebar-brand">
+        <div class="brand-mark">
+          <span class="brand-badge">IMS</span>
+          <div>
+            <div class="brand-title">Component IMS</div>
+            <div class="brand-sub">Hardware &amp; Electronics</div>
+          </div>
+        </div>
+        <button type="button" id="sidebar-close-btn" class="btn btn-sm btn-ghost sidebar-close" aria-label="Close menu">✕</button>
+      </div>
+
+      <nav class="sidebar-nav">
+        <div class="nav-section-label">Operations</div>
+        <a class="nav-link {{ 'active' if active_page == 'dashboard' else '' }}" href="{{ url_for('pages.dashboard') }}">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg>
+          <span>Dashboard</span>
+        </a>
+        <a class="nav-link {{ 'active' if active_page == 'inventory' else '' }}" href="{{ url_for('pages.inventory') }}">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+          <span>Inventory / Items</span>
+        </a>
+        <a class="nav-link {{ 'active' if active_page == 'new_transaction' else '' }}" href="{{ url_for('pages.new_transaction') }}">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>
+          <span>New Transaction</span>
+        </a>
+        <a class="nav-link {{ 'active' if active_page == 'bom' else '' }}" href="{{ url_for('pages.bom') }}">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+          <span>BOM Calculator</span>
+        </a>
+
+        <div class="nav-section-label">Records &amp; Data</div>
+        <a class="nav-link {{ 'active' if active_page == 'transactions' else '' }}" href="{{ url_for('pages.transactions') }}">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="12 8 12 12 14 14"/><path d="M3.05 11a9 9 0 1 1 .5 4m-.5 5v-5h5"/></svg>
+          <span>Transaction History</span>
+        </a>
+        <a class="nav-link {{ 'active' if active_page == 'reports' else '' }}" href="{{ url_for('pages.reports') }}">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+          <span>Reports &amp; Analytics</span>
+        </a>
+        <a class="nav-link {{ 'active' if active_page == 'excel' else '' }}" href="{{ url_for('pages.excel') }}">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+          <span>Excel Import / Export</span>
+        </a>
+
+        <div class="nav-section-label">System</div>
+        <a class="nav-link {{ 'active' if active_page == 'users' else '' }}" href="{{ url_for('pages.users') }}">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+          <span>Users / Settings</span>
+        </a>
+      </nav>
+
+      {% if current_user %}
+      <div class="sidebar-footer">
+        <div class="user-pill">
+          <div class="user-avatar">
+            {{ (current_user.first_name[:1] ~ current_user.last_name[:1]).upper() }}
+          </div>
+          <div class="user-meta">
+            <div class="user-name">{{ current_user.first_name }} {{ current_user.last_name }}</div>
+            <div class="user-handle">@{{ current_user.user_name }}</div>
+          </div>
+        </div>
+        <button type="button" id="logout-btn" class="btn btn-sm">Sign Out</button>
+      </div>
+      {% endif %}
+    </aside>
+  </div>
+
+  <script type="module" src="{{ url_for('static', filename='js/layout.js') }}"></script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

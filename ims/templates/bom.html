@@ -1,0 +1,141 @@
+{% extends "base.html" %}
+{% block title %}BOM Cost Calculator — Component IMS{% endblock %}
+{% block mobile_title %}BOM Calculator{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1 class="page-title">BOM Cost Calculator</h1>
+    <p class="page-subtitle">Check component availability and calculate BOM cost using Weighted Average and Last Purchase prices</p>
+  </div>
+  <span class="badge badge-info">Read-Only Analysis • Does Not Alter Stock</span>
+</div>
+
+<!-- Step 1: Upload & Column Mapping -->
+<section class="card" style="margin-bottom:18px;">
+  <div class="card-header">
+    <h2 class="card-title">1. Upload BOM Excel File (.xlsx)</h2>
+  </div>
+  <div class="card-body">
+    <div id="bom-dropzone" class="dropzone">
+      <input id="bom-file-input" type="file" accept=".xlsx" class="hidden">
+      <p style="font-weight:600;">Drop your BOM Excel (.xlsx) file here or click to browse</p>
+      <p class="text-muted" style="font-size:0.84rem;margin-top:4px;">Required columns: Item Code &amp; Quantity (Optional: Item Name). Duplicate item codes are automatically aggregated.</p>
+    </div>
+
+    <div id="bom-mapping-panel" class="hidden" style="margin-top:16px;">
+      <div class="form-grid">
+        <div class="field">
+          <label for="bom-sheet">Worksheet</label>
+          <select id="bom-sheet" class="select"></select>
+        </div>
+        <div class="field">
+          <label for="bom-col-code">Item Code Column *</label>
+          <select id="bom-col-code" class="select"></select>
+        </div>
+        <div class="field">
+          <label for="bom-col-qty">Quantity Column *</label>
+          <select id="bom-col-qty" class="select"></select>
+        </div>
+        <div class="field">
+          <label for="bom-col-name">Item Name Column (Optional)</label>
+          <select id="bom-col-name" class="select"></select>
+        </div>
+      </div>
+
+      <div style="display:flex;gap:10px;margin-top:14px;flex-wrap:wrap;">
+        <button type="button" id="bom-calc-btn" class="btn btn-primary">Analyze Availability &amp; Calculate Cost</button>
+        <button type="button" id="bom-export-btn" class="btn hidden">Download Excel Report (.xlsx)</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Results Area -->
+<div id="bom-results" class="hidden">
+  <!-- Summary Cards -->
+  <div id="bom-summary-kpis" class="grid grid-kpi" style="margin-bottom:18px;"></div>
+
+  <!-- Report 1: Inventory Availability -->
+  <section class="card" style="margin-bottom:18px;">
+    <div class="card-header">
+      <div>
+        <h2 class="card-title">Report 1: Inventory Availability</h2>
+      </div>
+      <div class="tabs" id="bom-avail-filter">
+        <button type="button" class="tab-btn active" data-status="ALL">All</button>
+        <button type="button" class="tab-btn" data-status="Available">Available</button>
+        <button type="button" class="tab-btn" data-status="Insufficient">Insufficient</button>
+        <button type="button" class="tab-btn" data-status="Out of Stock">Out of Stock</button>
+        <button type="button" class="tab-btn" data-status="Unknown">Unknown</button>
+      </div>
+    </div>
+    <div class="table-wrap">
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Item Code</th>
+            <th>Model / Name</th>
+            <th>Category</th>
+            <th>Location</th>
+            <th class="text-right">Required Qty</th>
+            <th class="text-right">Available Qty</th>
+            <th class="text-right">Shortage</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody id="bom-avail-tbody"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- Invalid Rows (if any) -->
+  <section id="bom-invalid-card" class="card hidden" style="margin-bottom:18px;">
+    <div class="card-header">
+      <h2 class="card-title text-danger">Invalid BOM Rows</h2>
+    </div>
+    <div class="table-wrap">
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Excel Row</th>
+            <th>Item Code</th>
+            <th>Item Name</th>
+            <th>Raw Quantity</th>
+            <th>Error</th>
+          </tr>
+        </thead>
+        <tbody id="bom-invalid-tbody"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- Report 2: BOM Cost Calculation -->
+  <section class="card">
+    <div class="card-header">
+      <h2 class="card-title">Report 2: BOM Cost Calculation</h2>
+    </div>
+    <div class="table-wrap">
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Item Code</th>
+            <th>Item Name / Model</th>
+            <th class="text-right">Required Qty</th>
+            <th class="text-right">WAC Unit Cost</th>
+            <th class="text-right">WAC Line Total</th>
+            <th class="text-right">Last Purchase Unit</th>
+            <th class="text-right">Last Purchase Line</th>
+          </tr>
+        </thead>
+        <tbody id="bom-cost-tbody"></tbody>
+        <tfoot id="bom-cost-tfoot"></tfoot>
+      </table>
+    </div>
+  </section>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script type="module" src="{{ url_for('static', filename='js/pages/bom.js') }}"></script>
+{% endblock %}

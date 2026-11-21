@@ -460,7 +460,8 @@ def create_triggers(cur):
                 END IF;
             END IF;
 
-            IF NEW.transaction_type = 'PURCHASE_IN' THEN
+            IF NEW.transaction_type = 'PURCHASE_IN'
+               OR (NEW.transaction_type = 'OPENING' AND NEW.price IS NOT NULL) THEN
                 v_new_last := NEW.price;
             END IF;
 

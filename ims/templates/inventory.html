@@ -1,0 +1,154 @@
+{% extends "base.html" %}
+{% block title %}Inventory &amp; Categories — Component IMS{% endblock %}
+{% block mobile_title %}Inventory / Items{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1 class="page-title">Inventory &amp; Categories</h1>
+    <p class="page-subtitle">Manage electronic and mechanical components, specifications, and category hierarchies</p>
+  </div>
+  <div class="page-actions">
+    <button type="button" id="btn-new-item" class="btn btn-primary">+ Add Item</button>
+    <button type="button" id="btn-new-category" class="btn">+ Add Category</button>
+  </div>
+</div>
+
+<div class="tabs" style="margin-bottom:16px;">
+  <button type="button" class="tab-btn active" data-tab="items">Items &amp; Stock</button>
+  <button type="button" class="tab-btn" data-tab="categories">Category Hierarchy</button>
+</div>
+
+<!-- Items Tab -->
+<section id="tab-items" class="card">
+  <div class="card-header">
+    <h2 class="card-title">Component Catalog</h2>
+    <div style="display:flex;gap:8px;align-items:center;">
+      <button type="button" id="inv-filter-toggle" class="btn btn-sm filter-toggle-mobile">Toggle Filters</button>
+      <a href="{{ url_for('pages.excel') }}#export" class="btn btn-sm">Excel Export</a>
+    </div>
+  </div>
+
+  <div class="card-body" style="border-bottom:1px solid var(--border-color);">
+    <div class="form-grid" style="margin-bottom:10px;">
+      <div class="field">
+        <label for="f-search">Quick Search</label>
+        <input id="f-search" class="input" type="search" placeholder="Code, model, voltage, location...">
+      </div>
+      <div class="field">
+        <label for="f-parent-cat">Main Category</label>
+        <select id="f-parent-cat" class="select"></select>
+      </div>
+      <div class="field">
+        <label for="f-sub-cat">Subcategory</label>
+        <select id="f-sub-cat" class="select"></select>
+      </div>
+      <div class="field">
+        <label for="f-mounting">Mounting Type</label>
+        <select id="f-mounting" class="select">
+          <option value="">All</option>
+          <option value="SMD">SMD</option>
+          <option value="DIP">DIP</option>
+        </select>
+      </div>
+    </div>
+
+    <div id="inv-adv-filters" class="filter-collapsible">
+      <div class="form-grid">
+        <div class="field"><label for="f-item-code">Item Code</label><input id="f-item-code" class="input" type="text"></div>
+        <div class="field"><label for="f-model">Model</label><input id="f-model" class="input" type="text"></div>
+        <div class="field"><label for="f-size">Size</label><input id="f-size" class="input" type="text" placeholder="e.g. 603, 1206"></div>
+        <div class="field"><label for="f-material">Material</label><input id="f-material" class="input" type="text"></div>
+        <div class="field"><label for="f-voltage">Voltage</label><input id="f-voltage" class="input" type="text"></div>
+        <div class="field"><label for="f-location">Location / Drawer</label><input id="f-location" class="input" type="text"></div>
+        <div class="field"><label for="f-min-qty">Min Qty</label><input id="f-min-qty" class="input" type="number" min="0" step="1"></div>
+        <div class="field"><label for="f-max-qty">Max Qty</label><input id="f-max-qty" class="input" type="number" min="0" step="1"></div>
+        <div class="field"><label for="f-below">Below Threshold (&lt;)</label><input id="f-below" class="input" type="number" min="0" step="1"></div>
+        <div class="field"><label for="f-sort">Sort By</label>
+          <select id="f-sort" class="select">
+            <option value="item_code">Item Code</option>
+            <option value="model">Model</option>
+            <option value="category">Category</option>
+            <option value="location">Location</option>
+            <option value="quantity">Quantity</option>
+            <option value="weighted_avg_cost">Weighted Avg Cost</option>
+            <option value="last_purchase_cost">Last Purchase Cost</option>
+            <option value="created_at">Created Date</option>
+          </select>
+        </div>
+        <div class="field"><label for="f-sort-dir">Direction</label>
+          <select id="f-sort-dir" class="select">
+            <option value="asc">Ascending</option>
+            <option value="desc">Descending</option>
+          </select>
+        </div>
+        <div class="field" style="justify-content:flex-end;">
+          <label class="checkbox-row"><input id="f-zero" type="checkbox"><span>Zero stock only</span></label>
+        </div>
+      </div>
+    </div>
+
+    <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap;">
+      <button type="button" id="inv-apply-btn" class="btn btn-sm btn-primary">Search &amp; Filter</button>
+      <button type="button" id="inv-reset-btn" class="btn btn-sm">Reset Filters</button>
+    </div>
+  </div>
+
+  <div class="table-wrap desktop-table-only">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Item Code</th>
+          <th>Category</th>
+          <th>Model</th>
+          <th>Size / Mount</th>
+          <th>Voltage / Material</th>
+          <th>Location</th>
+          <th class="text-right">Qty</th>
+          <th class="text-right">WAC</th>
+          <th class="text-right">Last Purchase</th>
+          <th class="text-right">Actions</th>
+        </tr>
+      </thead>
+      <tbody id="inv-tbody">
+        <tr><td colspan="10" class="empty-state">Loading items...</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div id="inv-mobile" class="mobile-list" style="padding:12px;"></div>
+  <div id="inv-pagination" class="pagination"></div>
+</section>
+
+<!-- Categories Tab -->
+<section id="tab-categories" class="card hidden">
+  <div class="card-header">
+    <div>
+      <h2 class="card-title">Categories &amp; Subcategories</h2>
+      <p class="text-muted" style="font-size:0.82rem;">PostgreSQL enforces hierarchy integrity and prevents cycles or deleting used categories</p>
+    </div>
+    <button type="button" id="btn-cat-add-inline" class="btn btn-sm btn-primary">+ New Category</button>
+  </div>
+  <div class="table-wrap">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Category Path</th>
+          <th>Parent</th>
+          <th class="text-right">Direct Items</th>
+          <th class="text-right">Total Items</th>
+          <th>Description</th>
+          <th class="text-right">Actions</th>
+        </tr>
+      </thead>
+      <tbody id="cat-tbody">
+        <tr><td colspan="6" class="empty-state">Loading categories...</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script type="module" src="{{ url_for('static', filename='js/pages/inventory.js') }}"></script>
+{% endblock %}

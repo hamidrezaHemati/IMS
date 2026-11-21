@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% block title %}Users &amp; Settings — Component IMS{% endblock %}
+{% block mobile_title %}Users / Settings{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1 class="page-title">Users &amp; Settings</h1>
+    <p class="page-subtitle">Manage internal company accounts and update your password</p>
+  </div>
+</div>
+
+<div class="grid grid-2" style="margin-bottom:18px;">
+  <section class="card">
+    <div class="card-header">
+      <h2 class="card-title">Add Internal User</h2>
+    </div>
+    <div class="card-body">
+      <form id="add-user-form" class="form-grid">
+        <div class="field">
+          <label for="u-first">First Name *</label>
+          <input id="u-first" class="input" required maxlength="100">
+        </div>
+        <div class="field">
+          <label for="u-last">Last Name *</label>
+          <input id="u-last" class="input" required maxlength="100">
+        </div>
+        <div class="field">
+          <label for="u-username">Username *</label>
+          <input id="u-username" class="input" required maxlength="80">
+        </div>
+        <div class="field">
+          <label for="u-password">Password *</label>
+          <input id="u-password" class="input" type="password" required>
+        </div>
+        <div style="grid-column:1 / -1;display:flex;justify-content:flex-end;">
+          <button type="submit" class="btn btn-primary">Create User</button>
+        </div>
+      </form>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="card-header">
+      <h2 class="card-title">Change My Password</h2>
+    </div>
+    <div class="card-body">
+      <form id="change-pw-form" class="form-grid">
+        <div class="field" style="grid-column:1 / -1;">
+          <label for="pw-current">Current Password *</label>
+          <input id="pw-current" class="input" type="password" required>
+        </div>
+        <div class="field">
+          <label for="pw-new">New Password *</label>
+          <input id="pw-new" class="input" type="password" required>
+        </div>
+        <div class="field">
+          <label for="pw-confirm">Confirm New Password *</label>
+          <input id="pw-confirm" class="input" type="password" required>
+        </div>
+        <div style="grid-column:1 / -1;display:flex;justify-content:flex-end;">
+          <button type="submit" class="btn btn-primary">Update Password</button>
+        </div>
+      </form>
+    </div>
+  </section>
+</div>
+
+<section class="card">
+  <div class="card-header">
+    <h2 class="card-title">Registered Users</h2>
+  </div>
+  <div class="table-wrap">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Full Name</th>
+          <th>Username</th>
+          <th class="text-right">Transactions Recorded</th>
+          <th>Created</th>
+        </tr>
+      </thead>
+      <tbody id="users-tbody">
+        <tr><td colspan="5" class="empty-state">Loading users...</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script type="module" src="{{ url_for('static', filename='js/pages/users.js') }}"></script>
+{% endblock %}

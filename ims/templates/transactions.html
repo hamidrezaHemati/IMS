@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+{% block title %}Transaction History — Component IMS{% endblock %}
+{% block mobile_title %}Transaction History{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1 class="page-title">Transaction History</h1>
+    <p class="page-subtitle">Immutable stock ledger recorded and validated by PostgreSQL triggers</p>
+  </div>
+  <div class="page-actions">
+    <a class="btn btn-primary" href="{{ url_for('pages.new_transaction') }}">+ New Transaction</a>
+    <button type="button" id="tx-export-btn" class="btn">Export to Excel</button>
+  </div>
+</div>
+
+<section class="card">
+  <div class="card-header">
+    <h2 class="card-title">Movement Filters</h2>
+    <button type="button" id="hist-filter-toggle" class="btn btn-sm filter-toggle-mobile">Filters</button>
+  </div>
+
+  <div class="card-body" style="border-bottom:1px solid var(--border-color);">
+    <div id="hist-filters" class="filter-collapsible">
+      <div class="form-grid">
+        <div class="field">
+          <label for="h-search">Item Code / Model / Note</label>
+          <input id="h-search" class="input" type="search" placeholder="Search code, model, note...">
+        </div>
+        <div class="field">
+          <label for="h-type">Transaction Type</label>
+          <select id="h-type" class="select">
+            <option value="">All Types</option>
+            <option value="OPENING">OPENING</option>
+            <option value="PURCHASE_IN">PURCHASE_IN</option>
+            <option value="OUT">OUT</option>
+            <option value="ADJUSTMENT_IN">ADJUSTMENT_IN</option>
+            <option value="ADJUSTMENT_OUT">ADJUSTMENT_OUT</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="h-user">User</label>
+          <select id="h-user" class="select">
+            <option value="">All Users</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="h-from">Date From</label>
+          <input id="h-from" class="input" type="date">
+        </div>
+        <div class="field">
+          <label for="h-to">Date To</label>
+          <input id="h-to" class="input" type="date">
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;">
+        <button type="button" id="h-apply-btn" class="btn btn-sm btn-primary">Apply Filters</button>
+        <button type="button" id="h-reset-btn" class="btn btn-sm">Reset</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="table-wrap desktop-table-only">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Date</th>
+          <th>Type</th>
+          <th>Item Code</th>
+          <th>Model</th>
+          <th>User</th>
+          <th class="text-right">Qty</th>
+          <th class="text-right">Stock Change</th>
+          <th class="text-right">Price</th>
+          <th class="text-right">Unit Cost Snapshot</th>
+          <th class="text-right">Total Cost Snapshot</th>
+          <th>Note</th>
+        </tr>
+      </thead>
+      <tbody id="h-tbody">
+        <tr><td colspan="11" class="empty-state">Loading transactions...</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div id="h-mobile" class="mobile-list" style="padding:12px;"></div>
+  <div id="h-pagination" class="pagination"></div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script type="module" src="{{ url_for('static', filename='js/pages/transactions.js') }}"></script>
+{% endblock %}

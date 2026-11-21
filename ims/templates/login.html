@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sign In — Component IMS</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/tokens.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/base.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/components.css') }}">
+</head>
+<body>
+  <div class="login-page">
+    <div class="card login-card">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;">
+        <span class="brand-badge" style="width:40px;height:40px;border-radius:10px;background:#0f172a;color:#fff;display:inline-flex;align-items:center;justify-content:center;font-weight:700;">IMS</span>
+        <div>
+          <h1 style="font-size:1.25rem;">Component Inventory</h1>
+          <p class="text-muted" style="font-size:0.86rem;">Internal company workspace</p>
+        </div>
+      </div>
+
+      <div id="login-error" class="alert alert-danger hidden" style="margin-bottom:14px;"></div>
+
+      <form id="login-form" style="display:flex;flex-direction:column;gap:14px;">
+        <div class="field">
+          <label for="user_name">Username</label>
+          <input id="user_name" name="user_name" class="input" type="text" autocomplete="username" required autofocus>
+        </div>
+        <div class="field">
+          <label for="password">Password</label>
+          <input id="password" name="password" class="input" type="password" autocomplete="current-password" required>
+        </div>
+        <button id="login-submit" type="submit" class="btn btn-primary" style="margin-top:4px;">Sign In</button>
+      </form>
+    </div>
+  </div>
+
+  <script type="module">
+    import { apiFetch } from "{{ url_for('static', filename='js/api.js') }}";
+
+    const form = document.getElementById("login-form");
+    const errBox = document.getElementById("login-error");
+    const submitBtn = document.getElementById("login-submit");
+
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      errBox.classList.add("hidden");
+      submitBtn.disabled = true;
+      submitBtn.textContent = "Signing in...";
+
+      try {
+        await apiFetch("/api/auth/login", {
+          method: "POST",
+          body: {
+            user_name: document.getElementById("user_name").value,
+            password: document.getElementById("password").value,
+          },
+        });
+        const params = new URLSearchParams(window.location.search);
+        const nextUrl = params.get("next") || "/";
+        window.location.href = nextUrl.startsWith("/") ? nextUrl : "/";
+      } catch (err) {
+        errBox.textContent = err.message;
+        errBox.classList.remove("hidden");
+        submitBtn.disabled = false;
+        submitBtn.textContent = "Sign In";
+      }
+    });
+  </script>
+</body>
+</html>
