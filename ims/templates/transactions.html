@@ -16,7 +16,10 @@
 
 <section class="card">
   <div class="card-header">
-    <h2 class="card-title">فیلتر گردش‌های کالا</h2>
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+      <h2 class="card-title">فیلتر گردش‌های کالا</h2>
+      <span id="h-match-count" class="badge badge-info num">۰ مورد منطبق</span>
+    </div>
     <button type="button" id="hist-filter-toggle" class="btn btn-sm filter-toggle-mobile">فیلترها</button>
   </div>
 
@@ -60,7 +63,7 @@
     </div>
   </div>
 
-  <div class="table-wrap desktop-table-only">
+  <div id="h-table-scroll" class="table-wrap desktop-table-only scroll-table scroll-table-10">
     <table class="table">
       <thead>
         <tr>
@@ -83,8 +86,11 @@
     </table>
   </div>
 
-  <div id="h-mobile" class="mobile-list" style="padding:12px;"></div>
-  <div id="h-pagination" class="pagination"></div>
+  <div id="h-mobile" class="mobile-list scroll-mobile-10" style="padding:12px;"></div>
+  <div id="h-list-footer" class="tx-catalog-footer">
+    <span id="h-list-status">در حال بارگذاری...</span>
+    <span class="text-muted" style="font-size:0.78rem;">برای مشاهده سایر موارد، لیست را به پایین اسکرول کنید</span>
+  </div>
 </section>
 
 <!-- خلاصه گردش‌ها و خروجی اکسل پیشرفته گردش‌های انبار -->

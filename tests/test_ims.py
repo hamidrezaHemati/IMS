@@ -640,16 +640,44 @@ class IMSEndToEndTestCase(unittest.TestCase):
         for must_not_have in ("t-desc", "t-min-qty", "t-max-qty", "t-min-wac", "t-max-wac", "t-min-lpc", "t-max-lpc", "tx-catalog-pagination"):
             self.assertNotIn(must_not_have, new_tx_html)
 
+        dash_html = self.client.get("/").get_data(as_text=True)
+        for must_have in ("dashboard-kpis", "dash-recent-tx", "dash-recent-items"):
+            self.assertIn(must_have, dash_html)
+        for must_not_have in ("dash-items-tbody", "dash-items-mobile", "dash-pagination", "موجودی فعلی انبار"):
+            self.assertNotIn(must_not_have, dash_html)
+
         reports_html = self.client.get("/reports").get_data(as_text=True)
-        self.assertIn("موجودی و گزارش انبار", reports_html)
-        self.assertIn("r-dl-inv", reports_html)
-        self.assertIn("ex-inv-dl-btn", reports_html)
+        for must_have in (
+            "موجودی و گزارش انبار",
+            "r-dl-inv",
+            "ex-inv-dl-btn",
+            "ex-inv-apply-btn",
+            "ex-match-count",
+            "ex-table-scroll",
+            "scroll-table-8",
+            "ex-preview-tbody",
+            "ex-preview-status",
+            "قیمت میانگین",
+        ):
+            self.assertIn(must_have, reports_html)
         for moved_id in ("r-cat-tbody", "r-tx-tbody", "r-dl-tx", "ex-tx-dl-btn", "r-from", "extx-from"):
             self.assertNotIn(moved_id, reports_html)
 
         tx_html = self.client.get("/transactions").get_data(as_text=True)
-        for moved_id in ("r-from", "r-to", "r-tx-tbody", "r-dl-tx", "extx-from", "ex-tx-dl-btn"):
+        for moved_id in (
+            "h-match-count",
+            "h-table-scroll",
+            "scroll-table-10",
+            "h-list-status",
+            "r-from",
+            "r-to",
+            "r-tx-tbody",
+            "r-dl-tx",
+            "extx-from",
+            "ex-tx-dl-btn",
+        ):
             self.assertIn(moved_id, tx_html)
+        self.assertNotIn("h-pagination", tx_html)
 
         settings_html = self.client.get("/settings").get_data(as_text=True)
         self.assertIn("change-pw-form", settings_html)

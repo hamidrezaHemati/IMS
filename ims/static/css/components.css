@@ -352,6 +352,16 @@
     gap: 10px;
   }
 
+  .scroll-mobile-8 {
+    max-height: 520px;
+    overflow-y: auto;
+  }
+
+  .scroll-mobile-10 {
+    max-height: 620px;
+    overflow-y: auto;
+  }
+
   .mobile-item-card {
     border: 1px solid var(--border-color);
     border-radius: var(--radius-sm);
@@ -786,4 +796,33 @@
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
+}
+
+/* Reusable scrollable tables (max 8 or 10 rows visible in viewport) */
+.scroll-table {
+  overflow-y: auto;
+  overflow-x: auto;
+}
+
+.scroll-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  box-shadow: inset 0 -1px 0 var(--border-color);
+}
+
+.scroll-table tbody td {
+  padding: 8px 12px;
+}
+
+.scroll-table tbody tr {
+  height: 54px;
+}
+
+.scroll-table-8 {
+  max-height: 474px;
+}
+
+.scroll-table-10 {
+  max-height: 582px;
 }

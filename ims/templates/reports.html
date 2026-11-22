@@ -6,7 +6,7 @@
 <div class="page-header">
   <div>
     <h1 class="page-title">موجودی و گزارش انبار</h1>
-    <p class="page-subtitle">دریافت خروجی اکسل کامل موجودی فعلی و خروجی اکسل پیشرفته با فیلترهای ترکیبی (قیمت‌ها و ارزش‌ها بر حسب ریال و معادل تومان)</p>
+    <p class="page-subtitle">فیلتر و پیش‌نمایش موجودی قطعات و دریافت خروجی اکسل کامل یا فیلترشده (قیمت‌ها و ارزش‌ها بر حسب ریال و معادل تومان)</p>
   </div>
 </div>
 
@@ -20,43 +20,77 @@
   </div>
 </section>
 
-<!-- خروجی اکسل پیشرفته موجودی فعلی با فیلتر -->
+<!-- فیلتر، پیش‌نمایش و خروجی اکسل پیشرفته موجودی فعلی -->
 <div id="export">
   <section class="card">
     <div class="card-header">
-      <h2 class="card-title">خروجی اکسل پیشرفته موجودی فعلی (.xlsx)</h2>
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+        <h2 class="card-title">فیلتر و پیش‌نمایش موجودی انبار (قبل از خروجی اکسل)</h2>
+        <span id="ex-match-count" class="badge badge-info num">۰ مورد منطبق</span>
+      </div>
+      <button type="button" id="ex-filter-toggle" class="btn btn-sm filter-toggle-mobile">فیلترها</button>
     </div>
-    <div class="card-body">
-      <div class="form-grid">
-        <div class="field"><label for="ex-search">جستجوی کلی</label><input id="ex-search" class="input" type="text" placeholder="هر یک از فیلدها..."></div>
-        <div class="field"><label for="ex-parent-cat">دسته‌بندی اصلی</label><select id="ex-parent-cat" class="select"></select></div>
-        <div class="field"><label for="ex-sub-cat">زیردسته</label><select id="ex-sub-cat" class="select"></select></div>
-        <div class="field"><label for="ex-item-code">کد قطعه</label><input id="ex-item-code" class="input ltr" type="text"></div>
-        <div class="field"><label for="ex-model">مدل</label><input id="ex-model" class="input" type="text"></div>
-        <div class="field"><label for="ex-size">سایز</label><input id="ex-size" class="input" type="text"></div>
-        <div class="field"><label for="ex-mounting">نوع نصب</label>
-          <select id="ex-mounting" class="select">
-            <option value="">همه</option>
-            <option value="SMD">SMD</option>
-            <option value="DIP">DIP</option>
-          </select>
+
+    <div class="card-body" style="border-bottom:1px solid var(--border-color);">
+      <div id="ex-filters" class="filter-collapsible">
+        <div class="form-grid">
+          <div class="field"><label for="ex-search">جستجوی کلی</label><input id="ex-search" class="input" type="text" placeholder="هر یک از فیلدها..."></div>
+          <div class="field"><label for="ex-parent-cat">دسته‌بندی اصلی</label><select id="ex-parent-cat" class="select"></select></div>
+          <div class="field"><label for="ex-sub-cat">زیردسته</label><select id="ex-sub-cat" class="select"></select></div>
+          <div class="field"><label for="ex-item-code">کد قطعه</label><input id="ex-item-code" class="input ltr" type="text"></div>
+          <div class="field"><label for="ex-model">مدل</label><input id="ex-model" class="input" type="text"></div>
+          <div class="field"><label for="ex-size">سایز</label><input id="ex-size" class="input" type="text"></div>
+          <div class="field"><label for="ex-mounting">نوع نصب</label>
+            <select id="ex-mounting" class="select">
+              <option value="">همه</option>
+              <option value="SMD">SMD</option>
+              <option value="DIP">DIP</option>
+            </select>
+          </div>
+          <div class="field"><label for="ex-material">متریال</label><input id="ex-material" class="input" type="text"></div>
+          <div class="field"><label for="ex-voltage">ولتاژ</label><input id="ex-voltage" class="input" type="text"></div>
+          <div class="field"><label for="ex-location">محل نگهداری / کشو</label><input id="ex-location" class="input" type="text"></div>
+          <div class="field"><label for="ex-min-qty">حداقل موجودی</label><input id="ex-min-qty" class="input" type="number" min="0" step="1"></div>
+          <div class="field"><label for="ex-max-qty">حداکثر موجودی</label><input id="ex-max-qty" class="input" type="number" min="0" step="1"></div>
+          <div class="field"><label for="ex-below">کمتر از تعداد (&lt;)</label><input id="ex-below" class="input" type="number" min="0" step="1"></div>
+          <div class="field" style="justify-content:flex-end;">
+            <label class="checkbox-row"><input id="ex-zero" type="checkbox"><span>فقط کالاهای با موجودی صفر</span></label>
+          </div>
         </div>
-        <div class="field"><label for="ex-material">متریال</label><input id="ex-material" class="input" type="text"></div>
-        <div class="field"><label for="ex-voltage">ولتاژ</label><input id="ex-voltage" class="input" type="text"></div>
-        <div class="field"><label for="ex-location">محل نگهداری / کشو</label><input id="ex-location" class="input" type="text"></div>
-        <div class="field"><label for="ex-min-qty">حداقل موجودی</label><input id="ex-min-qty" class="input" type="number" min="0" step="1"></div>
-        <div class="field"><label for="ex-max-qty">حداکثر موجودی</label><input id="ex-max-qty" class="input" type="number" min="0" step="1"></div>
-        <div class="field"><label for="ex-below">کمتر از تعداد (&lt;)</label><input id="ex-below" class="input" type="number" min="0" step="1"></div>
-        <div class="field" style="justify-content:flex-end;">
-          <label class="checkbox-row"><input id="ex-zero" type="checkbox"><span>فقط کالاهای با موجودی صفر</span></label>
+        <div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap;">
+          <button type="button" id="ex-inv-apply-btn" class="btn btn-sm btn-primary">اعمال فیلتر و پیش‌نمایش</button>
+          <button type="button" id="ex-inv-dl-btn" class="btn btn-sm btn-accent">دانلود اکسل موارد منطبق (.xlsx)</button>
+          <button type="button" id="ex-inv-reset-btn" class="btn btn-sm">پاک کردن</button>
         </div>
       </div>
-      <div id="ex-inv-count-msg" class="text-secondary" style="margin-top:12px;font-size:0.86rem;"></div>
-      <div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap;">
-        <button type="button" id="ex-inv-count-btn" class="btn">بررسی تعداد اقلام منطبق</button>
-        <button type="button" id="ex-inv-dl-btn" class="btn btn-primary">دانلود فایل اکسل موجودی</button>
-        <button type="button" id="ex-inv-reset-btn" class="btn">پاک کردن</button>
-      </div>
+    </div>
+
+    <div id="ex-table-scroll" class="table-wrap desktop-table-only scroll-table scroll-table-8">
+      <table class="table">
+        <thead>
+          <tr>
+            <th>کد قطعه</th>
+            <th>دسته‌بندی</th>
+            <th>مدل</th>
+            <th>سایز</th>
+            <th>نوع نصب</th>
+            <th>ولتاژ / متریال</th>
+            <th>محل نگهداری</th>
+            <th class="text-right">موجودی فعلی</th>
+            <th class="text-right">قیمت میانگین (ریال / تومان)</th>
+            <th class="text-right">آخرین قیمت خرید (ریال / تومان)</th>
+          </tr>
+        </thead>
+        <tbody id="ex-preview-tbody">
+          <tr><td colspan="10" class="empty-state">در حال بارگذاری موجودی...</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div id="ex-preview-mobile" class="mobile-list scroll-mobile-8" style="padding:12px;"></div>
+    <div id="ex-preview-footer" class="tx-catalog-footer">
+      <span id="ex-preview-status">در حال بارگذاری...</span>
+      <span class="text-muted" style="font-size:0.78rem;">برای مشاهده سایر موارد، لیست را به پایین اسکرول کنید</span>
     </div>
   </section>
 </div>
