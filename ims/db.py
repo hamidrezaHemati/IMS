@@ -37,6 +37,8 @@ _FK_CONSTRAINT_MESSAGES = {
     "fk_transaction_item": "This item cannot be deleted because it has inventory transactions.",
     "fk_transaction_user": "This user cannot be deleted because they have recorded transactions.",
     "fk_inventory_item": "Inventory record references this item.",
+    "fk_user_role": "Cannot delete this role because users are assigned to it.",
+    "fk_ura_role": "Cannot delete this role because user role assignments reference it.",
 }
 
 _CHECK_CONSTRAINT_MESSAGES = {

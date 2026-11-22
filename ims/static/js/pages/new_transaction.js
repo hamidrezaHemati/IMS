@@ -1,4 +1,5 @@
 import { apiFetch, buildQuery } from "../api.js";
+import { openCategoryModal, openItemModal } from "../modals.js";
 import {
   escapeHtml,
   fmtCost,
@@ -13,6 +14,7 @@ import {
 } from "../ui.js";
 
 const cart = new Map();
+let allCategories = [];
 let currentPage = 1;
 
 function isOutgoingType(txType) {
@@ -371,22 +373,45 @@ function getFilterParams(page = 1) {
     page_size: 12,
     search: document.getElementById("t-search").value,
     category_id: subCat || parentCat,
-    mounting_type: document.getElementById("t-mounting").value,
     item_code: document.getElementById("t-item-code").value,
-    model: document.getElementById("t-model").value,
-    size: document.getElementById("t-size").value,
-    material: document.getElementById("t-material").value,
-    voltage: document.getElementById("t-voltage").value,
     location: document.getElementById("t-location").value,
-    description: document.getElementById("t-desc").value,
-    min_quantity: document.getElementById("t-min-qty").value,
-    max_quantity: document.getElementById("t-max-qty").value,
-    below_threshold: document.getElementById("t-below").value,
-    min_wac: document.getElementById("t-min-wac").value,
-    max_wac: document.getElementById("t-max-wac").value,
-    min_lpc: document.getElementById("t-min-lpc").value,
-    max_lpc: document.getElementById("t-max-lpc").value,
+    mounting_type: document.getElementById("t-mounting").value,
+    size: document.getElementById("t-size").value,
+    model: document.getElementById("t-model").value,
+    voltage: document.getElementById("t-voltage").value,
+    material: document.getElementById("t-material").value,
   };
+}
+
+async function refreshCategories() {
+  const catData = await apiFetch("/api/categories");
+  allCategories = catData.categories || [];
+  populateCategorySelects(
+    document.getElementById("t-parent-cat"),
+    document.getElementById("t-sub-cat"),
+    allCategories,
+    true
+  );
+}
+
+function launchCategoryModal() {
+  openCategoryModal({
+    allCategories,
+    onSaved: async () => {
+      await refreshCategories();
+    },
+  });
+}
+
+function launchItemModal() {
+  openItemModal({
+    allCategories,
+    onNeedCategory: () => launchCategoryModal(),
+    onSaved: async () => {
+      await refreshCategories();
+      await loadCatalog(1);
+    },
+  });
 }
 
 async function loadCatalog(page = 1) {
@@ -469,9 +494,16 @@ document.addEventListener("DOMContentLoaded", async () => {
     document.getElementById("t-item-code").value = preItemCode;
   }
 
-  document.getElementById("tx-filter-toggle").addEventListener("click", () => {
-    document.getElementById("tx-adv-filters").classList.toggle("open");
+  const moreFiltersBtn = document.getElementById("tx-more-filters-btn");
+  const secondaryFilters = document.getElementById("tx-secondary-filters");
+  moreFiltersBtn.addEventListener("click", () => {
+    const isHidden = secondaryFilters.classList.toggle("hidden");
+    moreFiltersBtn.textContent = isHidden ? "نمایش فیلترهای بیشتر" : "بستن فیلترهای بیشتر";
+    moreFiltersBtn.setAttribute("aria-expanded", String(!isHidden));
   });
+
+  document.getElementById("tx-btn-new-item").addEventListener("click", launchItemModal);
+  document.getElementById("tx-btn-new-category").addEventListener("click", launchCategoryModal);
 
   document.getElementById("mobile-cart-open").addEventListener("click", () => {
     document.getElementById("tx-cart-panel").classList.add("open");
@@ -498,9 +530,8 @@ document.addEventListener("DOMContentLoaded", async () => {
   });
   document.getElementById("t-reset-btn").addEventListener("click", () => {
     [
-      "t-search", "t-item-code", "t-model", "t-size", "t-material",
-      "t-voltage", "t-location", "t-desc", "t-min-qty", "t-max-qty",
-      "t-below", "t-min-wac", "t-max-wac", "t-min-lpc", "t-max-lpc",
+      "t-search", "t-item-code", "t-location",
+      "t-size", "t-model", "t-voltage", "t-material",
     ].forEach((id) => { document.getElementById(id).value = ""; });
     document.getElementById("t-mounting").value = "";
     document.getElementById("t-parent-cat").value = "";
@@ -512,13 +543,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   renderCart();
 
   try {
-    const catData = await apiFetch("/api/categories");
-    populateCategorySelects(
-      document.getElementById("t-parent-cat"),
-      document.getElementById("t-sub-cat"),
-      catData.categories || [],
-      true
-    );
+    await refreshCategories();
   } catch (err) {
     toast(err.message, "error");
   }

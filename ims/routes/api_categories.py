@@ -1,7 +1,7 @@
 """Category hierarchy API endpoints."""
 
 from flask import Blueprint, jsonify, request
-from ims.auth import login_required
+from ims.auth import admin_required, login_required
 from ims.services import category_service
 
 bp = Blueprint("api_categories", __name__, url_prefix="/api/categories")
@@ -24,7 +24,7 @@ def create_category():
 
 
 @bp.put("/<int:category_id>")
-@login_required
+@admin_required
 def update_category(category_id: int):
     data = request.get_json(silent=True) or {}
     category = category_service.update_category(category_id, data)
@@ -32,7 +32,7 @@ def update_category(category_id: int):
 
 
 @bp.delete("/<int:category_id>")
-@login_required
+@admin_required
 def delete_category(category_id: int):
     category_service.delete_category(category_id)
     return jsonify({"ok": True})

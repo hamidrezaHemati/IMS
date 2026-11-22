@@ -1,5 +1,5 @@
 import { apiFetch, buildQuery, downloadExcel } from "../api.js";
-import { escapeHtml, fmtCost, fmtQty, toast, txTypeBadge } from "../ui.js";
+import { fmtCost, fmtQty, populateCategorySelects, toast, txTypeBadge } from "../ui.js";
 
 async function loadAnalytics() {
   const params = {
@@ -32,39 +32,32 @@ async function loadAnalytics() {
         )
         .join("");
     }
-
-    const catBody = document.getElementById("r-cat-tbody");
-    const cats = data.category_breakdown || [];
-    if (!cats.length) {
-      catBody.innerHTML = `<tr><td colspan="7" class="empty-state">هنوز هیچ قطعه‌ای در انبار ثبت نشده است.</td></tr>`;
-    } else {
-      catBody.innerHTML = cats
-        .map(
-          (c) => `
-        <tr>
-          <td><strong>${escapeHtml(c.category_name)}</strong></td>
-          <td>${escapeHtml(c.subcategory_name || "—")}</td>
-          <td class="text-right num">${fmtQty(c.distinct_items)}</td>
-          <td class="text-right num"><strong>${fmtQty(c.total_quantity)}</strong></td>
-          <td class="text-right num">${fmtQty(c.zero_stock_count)}</td>
-          <td class="text-right num">
-            ${fmtCost(c.wac_known_value)}
-            ${!c.wac_complete ? `<div class="text-warning" style="font-size:0.75rem;">ناقص (${c.wac_missing_cost_items} مورد بدون قیمت)</div>` : ""}
-          </td>
-          <td class="text-right num">
-            ${fmtCost(c.lpc_known_value)}
-            ${!c.lpc_complete ? `<div class="text-warning" style="font-size:0.75rem;">ناقص (${c.lpc_missing_cost_items} مورد بدون قیمت)</div>` : ""}
-          </td>
-        </tr>`
-        )
-        .join("");
-    }
   } catch (err) {
     toast(err.message, "error");
   }
 }
 
-document.addEventListener("DOMContentLoaded", () => {
+function getInventoryExportFilters() {
+  const parentCat = document.getElementById("ex-parent-cat").value;
+  const subCat = document.getElementById("ex-sub-cat").value;
+  return {
+    search: document.getElementById("ex-search").value,
+    category_id: subCat || parentCat,
+    item_code: document.getElementById("ex-item-code").value,
+    model: document.getElementById("ex-model").value,
+    size: document.getElementById("ex-size").value,
+    mounting_type: document.getElementById("ex-mounting").value,
+    material: document.getElementById("ex-material").value,
+    voltage: document.getElementById("ex-voltage").value,
+    location: document.getElementById("ex-location").value,
+    min_quantity: document.getElementById("ex-min-qty").value,
+    max_quantity: document.getElementById("ex-max-qty").value,
+    below_threshold: document.getElementById("ex-below").value,
+    zero_stock: document.getElementById("ex-zero").checked ? "true" : "",
+  };
+}
+
+document.addEventListener("DOMContentLoaded", async () => {
   document.getElementById("r-apply-btn").addEventListener("click", loadAnalytics);
   document.getElementById("r-reset-btn").addEventListener("click", () => {
     document.getElementById("r-from").value = "";
@@ -89,6 +82,77 @@ document.addEventListener("DOMContentLoaded", () => {
     try {
       await downloadExcel(`/api/export/transactions${qs}`, {}, "transactions_report.xlsx");
       toast("فایل اکسل گردش‌های انبار دانلود شد.", "success");
+    } catch (err) {
+      toast(err.message, "error");
+    }
+  });
+
+  try {
+    const [catData, userData] = await Promise.all([
+      apiFetch("/api/categories"),
+      apiFetch("/api/users"),
+    ]);
+    populateCategorySelects(
+      document.getElementById("ex-parent-cat"),
+      document.getElementById("ex-sub-cat"),
+      catData.categories || [],
+      true
+    );
+    const userSel = document.getElementById("extx-user");
+    (userData.users || []).forEach((u) => {
+      const opt = document.createElement("option");
+      opt.value = u.id;
+      opt.textContent = `${u.first_name} ${u.last_name} (@${u.user_name})`;
+      userSel.appendChild(opt);
+    });
+  } catch (err) {
+    toast(err.message, "error");
+  }
+
+  document.getElementById("ex-inv-count-btn").addEventListener("click", async () => {
+    try {
+      const params = { ...getInventoryExportFilters(), page: 1, page_size: 1 };
+      const data = await apiFetch(`/api/items${buildQuery(params)}`);
+      document.getElementById("ex-inv-count-msg").textContent =
+        `${fmtQty(data.total)} قلم قطعه با فیلترهای انتخابی منطبق است.`;
+    } catch (err) {
+      toast(err.message, "error");
+    }
+  });
+
+  document.getElementById("ex-inv-dl-btn").addEventListener("click", async () => {
+    try {
+      const qs = buildQuery(getInventoryExportFilters());
+      await downloadExcel(`/api/export/inventory${qs}`, {}, "inventory_report.xlsx");
+      toast("فایل اکسل موجودی دریافت شد.", "success");
+    } catch (err) {
+      toast(err.message, "error");
+    }
+  });
+
+  document.getElementById("ex-inv-reset-btn").addEventListener("click", () => {
+    [
+      "ex-search", "ex-item-code", "ex-model", "ex-size", "ex-material",
+      "ex-voltage", "ex-location", "ex-min-qty", "ex-max-qty", "ex-below",
+    ].forEach((id) => { document.getElementById(id).value = ""; });
+    document.getElementById("ex-mounting").value = "";
+    document.getElementById("ex-parent-cat").value = "";
+    document.getElementById("ex-parent-cat").dispatchEvent(new Event("change"));
+    document.getElementById("ex-zero").checked = false;
+    document.getElementById("ex-inv-count-msg").textContent = "";
+  });
+
+  document.getElementById("ex-tx-dl-btn").addEventListener("click", async () => {
+    const qs = buildQuery({
+      date_from: document.getElementById("extx-from").value,
+      date_to: document.getElementById("extx-to").value,
+      transaction_type: document.getElementById("extx-type").value,
+      user_id: document.getElementById("extx-user").value,
+      search: document.getElementById("extx-search").value,
+    });
+    try {
+      await downloadExcel(`/api/export/transactions${qs}`, {}, "transactions_report.xlsx");
+      toast("گزارش اکسل گردش‌ها دریافت شد.", "success");
     } catch (err) {
       toast(err.message, "error");
     }

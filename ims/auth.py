@@ -1,8 +1,8 @@
-"""Session-based authentication helpers using the existing app_user table."""
+"""Session-based authentication and role-based access helpers."""
 
 from functools import wraps
 import hmac
-from flask import g, jsonify, redirect, request, session, url_for
+from flask import g, jsonify, redirect, render_template, request, session, url_for
 from ims.db import AppError, get_db
 
 
@@ -22,8 +22,15 @@ def verify_password(stored_value: str | None, provided_password: str | None) -> 
     return hmac.compare_digest(stored_value, provided_password)
 
 
+def is_user_admin(user: dict | None) -> bool:
+    """Return True if the given user holds the admin role."""
+    if not user:
+        return False
+    return bool(user.get("is_admin")) or (str(user.get("role_name") or "").lower() == "admin")
+
+
 def authenticate_user(user_name: str, password: str) -> dict:
-    """Validate credentials against app_user and return public user fields."""
+    """Validate credentials against app_user and return public user fields with role."""
     clean_username = (user_name or "").strip()
     if not clean_username or not password:
         raise AppError("Username and password are required.", status_code=400)
@@ -32,9 +39,28 @@ def authenticate_user(user_name: str, password: str) -> dict:
     with db.cursor() as cur:
         cur.execute(
             """
-            SELECT id, first_name, last_name, user_name, password_hash, created_at
-              FROM app_user
-             WHERE user_name = %s;
+            SELECT
+                u.id,
+                u.role_id,
+                r.name AS role_name,
+                u.first_name,
+                u.last_name,
+                u.user_name,
+                u.password_hash,
+                u.created_at,
+                (
+                    LOWER(COALESCE(r.name, '')) = 'admin'
+                    OR EXISTS (
+                        SELECT 1
+                          FROM user_role_assignment ura
+                          JOIN role ar ON ar.id = ura.role_id
+                         WHERE ura.user_id = u.id
+                           AND LOWER(ar.name) = 'admin'
+                    )
+                ) AS is_admin
+              FROM app_user u
+              LEFT JOIN role r ON r.id = u.role_id
+             WHERE u.user_name = %s;
             """,
             (clean_username,),
         )
@@ -45,6 +71,9 @@ def authenticate_user(user_name: str, password: str) -> dict:
 
     return {
         "id": row["id"],
+        "role_id": row["role_id"],
+        "role_name": row["role_name"],
+        "is_admin": bool(row["is_admin"]),
         "first_name": row["first_name"],
         "last_name": row["last_name"],
         "user_name": row["user_name"],
@@ -53,7 +82,7 @@ def authenticate_user(user_name: str, password: str) -> dict:
 
 
 def get_current_user() -> dict | None:
-    """Fetch the currently signed-in user from the database, cached per request."""
+    """Fetch the currently signed-in user and role from the database, cached per request."""
     if hasattr(g, "current_user"):
         return g.current_user
 
@@ -66,9 +95,27 @@ def get_current_user() -> dict | None:
     with db.cursor() as cur:
         cur.execute(
             """
-            SELECT id, first_name, last_name, user_name, created_at
-              FROM app_user
-             WHERE id = %s;
+            SELECT
+                u.id,
+                u.role_id,
+                r.name AS role_name,
+                u.first_name,
+                u.last_name,
+                u.user_name,
+                u.created_at,
+                (
+                    LOWER(COALESCE(r.name, '')) = 'admin'
+                    OR EXISTS (
+                        SELECT 1
+                          FROM user_role_assignment ura
+                          JOIN role ar ON ar.id = ura.role_id
+                         WHERE ura.user_id = u.id
+                           AND LOWER(ar.name) = 'admin'
+                    )
+                ) AS is_admin
+              FROM app_user u
+              LEFT JOIN role r ON r.id = u.role_id
+             WHERE u.id = %s;
             """,
             (user_id,),
         )
@@ -79,7 +126,9 @@ def get_current_user() -> dict | None:
         g.current_user = None
         return None
 
-    g.current_user = dict(user)
+    result = dict(user)
+    result["is_admin"] = bool(result["is_admin"])
+    g.current_user = result
     return g.current_user
 
 
@@ -95,6 +144,32 @@ def login_required(view):
                     "code": "unauthorized",
                 }), 401
             return redirect(url_for("pages.login", next=request.full_path.rstrip("?")))
+        return view(*args, **kwargs)
+
+    return wrapped
+
+
+def admin_required(view):
+    """Require an authenticated admin user for API endpoints and page routes."""
+    @wraps(view)
+    def wrapped(*args, **kwargs):
+        user = get_current_user()
+        if user is None:
+            if request.path.startswith("/api/"):
+                return jsonify({
+                    "error": "Authentication required.",
+                    "code": "unauthorized",
+                }), 401
+            return redirect(url_for("pages.login", next=request.full_path.rstrip("?")))
+
+        if not is_user_admin(user):
+            if request.path.startswith("/api/"):
+                return jsonify({
+                    "error": "Admin access is required for this action.",
+                    "code": "forbidden",
+                }), 403
+            return render_template("403.html", active_page=""), 403
+
         return view(*args, **kwargs)
 
     return wrapped

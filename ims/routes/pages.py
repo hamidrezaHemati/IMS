@@ -1,7 +1,7 @@
 """HTML page routes for the Inventory Management System."""
 
 from flask import Blueprint, redirect, render_template, url_for
-from ims.auth import get_current_user, login_required
+from ims.auth import admin_required, get_current_user, login_required
 
 bp = Blueprint("pages", __name__)
 
@@ -50,7 +50,7 @@ def reports():
 
 
 @bp.get("/excel")
-@login_required
+@admin_required
 def excel():
     return render_template("excel.html", active_page="excel")
 

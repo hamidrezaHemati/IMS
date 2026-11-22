@@ -6,10 +6,7 @@
 <div class="page-header">
   <div>
     <h1 class="page-title">گزارش‌ها و تحلیل موجودی</h1>
-    <p class="page-subtitle">تحلیل ارزش موجودی به تفکیک دسته‌بندی و خلاصه گردش‌های انبار</p>
-  </div>
-  <div class="page-actions">
-    <a class="btn" href="{{ url_for('pages.excel') }}#export">خروجی‌های اکسل سفارشی</a>
+    <p class="page-subtitle">خلاصه گردش‌های انبار و دریافت خروجی‌های اکسل پیشرفته با فیلترهای ترکیبی</p>
   </div>
 </div>
 
@@ -35,7 +32,7 @@
   </div>
 </section>
 
-<div class="grid grid-2" style="margin-bottom:18px;">
+<div class="grid grid-2" style="margin-bottom:20px;">
   <section class="card">
     <div class="card-header">
       <h2 class="card-title">خلاصه گردش‌ها بر اساس نوع تراکنش</h2>
@@ -66,35 +63,81 @@
       <p class="text-secondary">فایل‌های اکسل به‌روز را مستقیماً از داده‌های زنده PostgreSQL دریافت کنید.</p>
       <div style="display:flex;gap:10px;flex-wrap:wrap;">
         <button type="button" id="r-dl-inv" class="btn btn-primary">دانلود گزارش کامل موجودی (.xlsx)</button>
-        <button type="button" id="r-dl-tx" class="btn btn-accent">دانلود گردش‌های فیلترشده (.xlsx)</button>
+        <button type="button" id="r-dl-tx" class="btn btn-accent">دانلود گردش‌های بازه انتخابی (.xlsx)</button>
       </div>
     </div>
   </section>
 </div>
 
-<section class="card">
-  <div class="card-header">
-    <h2 class="card-title">ارزش موجودی به تفکیک دسته‌بندی</h2>
-  </div>
-  <div class="table-wrap">
-    <table class="table">
-      <thead>
-        <tr>
-          <th>دسته‌بندی اصلی</th>
-          <th>زیردسته</th>
-          <th class="text-right">تعداد اقلام متمایز</th>
-          <th class="text-right">کل واحدهای موجود</th>
-          <th class="text-right">اقلام ناموجود</th>
-          <th class="text-right">ارزش بر مبنای میانگین موزون</th>
-          <th class="text-right">ارزش بر مبنای آخرین خرید</th>
-        </tr>
-      </thead>
-      <tbody id="r-cat-tbody">
-        <tr><td colspan="7" class="empty-state">در حال بارگذاری...</td></tr>
-      </tbody>
-    </table>
-  </div>
-</section>
+<!-- خروجی اکسل پیشرفته با فیلتر -->
+<div id="export" class="grid grid-2">
+  <section class="card">
+    <div class="card-header">
+      <h2 class="card-title">خروجی اکسل پیشرفته موجودی فعلی (.xlsx)</h2>
+    </div>
+    <div class="card-body">
+      <div class="form-grid">
+        <div class="field"><label for="ex-search">جستجوی کلی</label><input id="ex-search" class="input" type="text" placeholder="هر یک از فیلدها..."></div>
+        <div class="field"><label for="ex-parent-cat">دسته‌بندی اصلی</label><select id="ex-parent-cat" class="select"></select></div>
+        <div class="field"><label for="ex-sub-cat">زیردسته</label><select id="ex-sub-cat" class="select"></select></div>
+        <div class="field"><label for="ex-item-code">کد قطعه</label><input id="ex-item-code" class="input ltr" type="text"></div>
+        <div class="field"><label for="ex-model">مدل</label><input id="ex-model" class="input" type="text"></div>
+        <div class="field"><label for="ex-size">سایز</label><input id="ex-size" class="input" type="text"></div>
+        <div class="field"><label for="ex-mounting">نوع نصب</label>
+          <select id="ex-mounting" class="select">
+            <option value="">همه</option>
+            <option value="SMD">SMD</option>
+            <option value="DIP">DIP</option>
+          </select>
+        </div>
+        <div class="field"><label for="ex-material">متریال</label><input id="ex-material" class="input" type="text"></div>
+        <div class="field"><label for="ex-voltage">ولتاژ</label><input id="ex-voltage" class="input" type="text"></div>
+        <div class="field"><label for="ex-location">محل نگهداری / کشو</label><input id="ex-location" class="input" type="text"></div>
+        <div class="field"><label for="ex-min-qty">حداقل موجودی</label><input id="ex-min-qty" class="input" type="number" min="0" step="1"></div>
+        <div class="field"><label for="ex-max-qty">حداکثر موجودی</label><input id="ex-max-qty" class="input" type="number" min="0" step="1"></div>
+        <div class="field"><label for="ex-below">کمتر از تعداد (&lt;)</label><input id="ex-below" class="input" type="number" min="0" step="1"></div>
+        <div class="field" style="justify-content:flex-end;">
+          <label class="checkbox-row"><input id="ex-zero" type="checkbox"><span>فقط کالاهای با موجودی صفر</span></label>
+        </div>
+      </div>
+      <div id="ex-inv-count-msg" class="text-secondary" style="margin-top:12px;font-size:0.86rem;"></div>
+      <div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap;">
+        <button type="button" id="ex-inv-count-btn" class="btn">بررسی تعداد اقلام منطبق</button>
+        <button type="button" id="ex-inv-dl-btn" class="btn btn-primary">دانلود فایل اکسل موجودی</button>
+        <button type="button" id="ex-inv-reset-btn" class="btn">پاک کردن</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="card-header">
+      <h2 class="card-title">خروجی اکسل پیشرفته گردش‌های انبار (.xlsx)</h2>
+    </div>
+    <div class="card-body">
+      <div class="form-grid">
+        <div class="field"><label for="extx-from">از تاریخ</label><input id="extx-from" class="input ltr" type="date"></div>
+        <div class="field"><label for="extx-to">تا تاریخ</label><input id="extx-to" class="input ltr" type="date"></div>
+        <div class="field"><label for="extx-type">نوع تراکنش</label>
+          <select id="extx-type" class="select">
+            <option value="">همه انواع</option>
+            <option value="OPENING">موجودی اولیه (OPENING)</option>
+            <option value="PURCHASE_IN">خرید و ورود (PURCHASE_IN)</option>
+            <option value="OUT">خروج کالا (OUT)</option>
+            <option value="ADJUSTMENT_IN">تعدیل افزایشی (ADJUSTMENT_IN)</option>
+            <option value="ADJUSTMENT_OUT">تعدیل کاهشی (ADJUSTMENT_OUT)</option>
+          </select>
+        </div>
+        <div class="field"><label for="extx-user">کاربر</label>
+          <select id="extx-user" class="select"><option value="">همه کاربران</option></select>
+        </div>
+        <div class="field" style="grid-column:1 / -1;"><label for="extx-search">کد قطعه / مدل / توضیحات</label><input id="extx-search" class="input" type="text"></div>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:16px;flex-wrap:wrap;">
+        <button type="button" id="ex-tx-dl-btn" class="btn btn-primary">دانلود گزارش اکسل گردش‌ها</button>
+      </div>
+    </div>
+  </section>
+</div>
 {% endblock %}
 
 {% block scripts %}

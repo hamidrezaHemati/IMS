@@ -1,10 +1,17 @@
-"""Authentication and internal user management API endpoints."""
+"""Authentication, roles, and internal user management API endpoints."""
 
 from flask import Blueprint, jsonify, request, session
 import psycopg2
-from ims.auth import authenticate_user, get_current_user, login_required, prepare_password, verify_password
+from ims.auth import (
+    authenticate_user,
+    get_current_user,
+    is_user_admin,
+    login_required,
+    prepare_password,
+    verify_password,
+)
 from ims.db import AppError, get_db, translate_pg_error
-from ims.utils import clean_text
+from ims.utils import clean_text, parse_optional_int
 
 bp = Blueprint("api_auth", __name__, url_prefix="/api")
 
@@ -30,6 +37,22 @@ def me():
     return jsonify({"user": get_current_user()})
 
 
+@bp.get("/roles")
+@login_required
+def list_roles():
+    db = get_db()
+    with db.cursor() as cur:
+        cur.execute(
+            """
+            SELECT id, name, description
+              FROM role
+             ORDER BY id ASC;
+            """
+        )
+        roles = [dict(r) for r in cur.fetchall()]
+    return jsonify({"roles": roles})
+
+
 @bp.get("/users")
 @login_required
 def list_users():
@@ -39,14 +62,17 @@ def list_users():
             """
             SELECT
                 u.id,
+                u.role_id,
+                r.name AS role_name,
                 u.first_name,
                 u.last_name,
                 u.user_name,
                 u.created_at,
                 COUNT(t.id)::INT AS transaction_count
             FROM app_user u
+            LEFT JOIN role r ON r.id = u.role_id
             LEFT JOIN inventory_transaction t ON t.user_id = u.id
-            GROUP BY u.id
+            GROUP BY u.id, r.name
             ORDER BY u.id ASC;
             """
         )
@@ -57,11 +83,14 @@ def list_users():
 @bp.post("/users")
 @login_required
 def create_user():
+    current_user = get_current_user()
     data = request.get_json(silent=True) or {}
     first_name = clean_text(data.get("first_name"), max_len=100)
     last_name = clean_text(data.get("last_name"), max_len=100)
     user_name = clean_text(data.get("user_name"), max_len=80)
     password = data.get("password") or ""
+    req_role_id = parse_optional_int(data.get("role_id"), "role_id")
+    req_role_name = clean_text(data.get("role_name"), max_len=50)
 
     if not first_name or not last_name or not user_name or not password:
         raise AppError("First name, last name, username, and password are required.")
@@ -72,18 +101,46 @@ def create_user():
     db = get_db()
     try:
         with db.transaction() as cur:
+            if req_role_id is not None:
+                cur.execute("SELECT id, name FROM role WHERE id = %s;", (req_role_id,))
+            elif req_role_name:
+                cur.execute("SELECT id, name FROM role WHERE LOWER(name) = LOWER(%s);", (req_role_name,))
+            else:
+                cur.execute("SELECT id, name FROM role WHERE name = 'employee';")
+
+            role_row = cur.fetchone()
+            if not role_row:
+                raise AppError("Selected role does not exist.", status_code=404)
+
+            if role_row["name"].lower() == "admin" and not is_user_admin(current_user):
+                raise AppError(
+                    "Admin access is required to assign the admin role.",
+                    status_code=403,
+                    code="forbidden",
+                )
+
             cur.execute(
                 """
-                INSERT INTO app_user (first_name, last_name, user_name, password_hash)
-                VALUES (%s, %s, %s, %s)
-                RETURNING id, first_name, last_name, user_name, created_at;
+                INSERT INTO app_user (role_id, first_name, last_name, user_name, password_hash)
+                VALUES (%s, %s, %s, %s, %s)
+                RETURNING id, role_id, first_name, last_name, user_name, created_at;
                 """,
-                (first_name, last_name, user_name, stored_pw),
+                (role_row["id"], first_name, last_name, user_name, stored_pw),
             )
             user = dict(cur.fetchone())
+
+            cur.execute(
+                """
+                INSERT INTO user_role_assignment (user_id, role_id)
+                VALUES (%s, %s)
+                ON CONFLICT (user_id, role_id) DO NOTHING;
+                """,
+                (user["id"], role_row["id"]),
+            )
     except psycopg2.Error as exc:
         raise translate_pg_error(exc) from exc
 
+    user["role_name"] = role_row["name"]
     user["transaction_count"] = 0
     return jsonify({"user": user}), 201
 

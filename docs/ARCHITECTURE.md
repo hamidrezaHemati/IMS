@@ -69,13 +69,28 @@ The primary schema reference is [database_init.py](file:///e:/works/YaraSystem/I
 
 ```mermaid
 erDiagram
+    role {
+        BIGINT id PK
+        VARCHAR name UK
+        TEXT description
+        TIMESTAMPTZ created_at
+    }
+
     app_user {
         BIGINT id PK
+        BIGINT role_id FK
         VARCHAR first_name
         VARCHAR last_name
         VARCHAR user_name UK
         TEXT password_hash
         TIMESTAMPTZ created_at
+    }
+
+    user_role_assignment {
+        BIGINT id PK
+        BIGINT user_id FK
+        BIGINT role_id FK
+        TIMESTAMPTZ assigned_at
     }
 
     category {
@@ -123,6 +138,9 @@ erDiagram
         TEXT description
     }
 
+    role ||--o{ app_user : "primary role_id"
+    app_user ||--o{ user_role_assignment : "assigned"
+    role ||--o{ user_role_assignment : "role mappings"
     category ||--o{ category : "parent_id (self hierarchy)"
     category ||--o{ item : "categorizes"
     item ||--|| inventory : "1:1 auto-created by trigger"
@@ -132,7 +150,9 @@ erDiagram
 
 ### Exact Table Constraints & Precision Highlights
 
-- **`app_user`**: `user_name VARCHAR(80) UNIQUE NOT NULL`, `password_hash TEXT NOT NULL`.
+- **`role`**: `name VARCHAR(50) UNIQUE NOT NULL` (seeded with `admin` and `employee`).
+- **`app_user`**: `user_name VARCHAR(80) UNIQUE NOT NULL`, `password_hash TEXT NOT NULL`, `role_id BIGINT NULL` FK -> `role.id` (`ON UPDATE RESTRICT ON DELETE RESTRICT`).
+- **`user_role_assignment`**: `(user_id, role_id) UNIQUE`, linking `app_user` (`ON DELETE CASCADE`) and `role` (`ON DELETE RESTRICT`).
 - **`category`**: Self-referencing `parent_id` with `ON UPDATE RESTRICT ON DELETE RESTRICT` and `CHECK (parent_id IS NULL OR parent_id <> id)`.
 - **`item`**: `item_code VARCHAR(80) UNIQUE NOT NULL`, `model VARCHAR(150) NOT NULL`, `location VARCHAR(150) NOT NULL`, `mounting_type VARCHAR(10) NULL` constrained to `'SMD'` or `'DIP'`, `category_id` FK (`ON DELETE RESTRICT`).
 - **`inventory`**: `item_id BIGINT UNIQUE NOT NULL` (`ON DELETE RESTRICT`), `quantity BIGINT DEFAULT 0 CHECK (quantity >= 0)`, `weighted_avg_cost NUMERIC(18,4) NULL CHECK (>= 0)`, `last_purchase_cost NUMERIC(18,4) NULL CHECK (>= 0)`.
@@ -190,7 +210,11 @@ Weighted Average Cost (`fn_apply_inventory_transaction`) rules when incoming `pr
 - Uses `Decimal` arithmetic to compute line and grand totals under both **Weighted Average Cost** and **Last Purchase Cost**. If any BOM component is unknown or has a `NULL` unit cost, that price is never treated as `0`; the grand total is marked `Incomplete` alongside the known-cost subtotal and missing item count.
 
 ### Dashboard & Valuations
-- Displays distinct items, total physical stock units, zero-stock count, incoming/outgoing transaction counts, recent movements, recently added items, and WAC / Last Purchase total valuations (each flagged `Incomplete` whenever any stocked item has `NULL` cost). No low-stock field or KPI metric is included.
+- Displays distinct items, total physical stock units, zero-stock count, incoming/outgoing transaction counts, the latest 5 inventory movements, the latest 5 recently added items, and WAC / Last Purchase total valuations (each flagged `Incomplete` whenever any stocked item has `NULL` cost). No low-stock field or KPI metric is included.
+
+### Role-Based Access Control (`admin` vs. `employee`)
+- **`admin` only**: Access to `/excel` (`ورود اکسل انبار`) and `/api/import/*`, editing (`PUT`) and deleting (`DELETE`) categories/subcategories, and assigning the `admin` role when creating users.
+- **`employee` & `admin`**: Full access to Dashboard, Inventory/Items, adding new categories/subcategories and items (including directly from `/transactions/new`), recording transactions, BOM Calculator, Transaction History, Reports & Advanced Filtered Excel Exports (`/reports#export`), and user password management.
 
 ---
 
@@ -209,8 +233,8 @@ Weighted Average Cost (`fn_apply_inventory_transaction`) rules when incoming `pr
   **What it does:** `Database` manages a `psycopg2.pool.ThreadedConnectionPool(2, 20)` using `RealDictCursor`, exposing `connection()`, `cursor(commit=False)`, and `transaction()` context managers with automatic commit/rollback and pool return. Defines `AppError` and `translate_pg_error()`, which maps PostgreSQL exceptions (`RaiseException` from triggers, `UniqueViolation`, `ForeignKeyViolation` + `RestrictViolation` from `ON DELETE RESTRICT`, `CheckViolation`, `NotNullViolation`, `NumericValueOutOfRange`, `StringDataRightTruncation`) into clean HTTP status codes (`400`, `409`, `500`) and readable messages. `get_db()` returns the active pool from `current_app.extensions["db"]`.
 
 - **[ims/auth.py](file:///e:/works/YaraSystem/IMS%20-%20inventory%20management%20system/IMS/ims/auth.py)**  
-  **Purpose:** Internal user authentication and session authorization guards.  
-  **What it does:** Provides `prepare_password()` (currently returning raw password plaintext per project requirement, isolated in one place for future hashing) and constant-time `verify_password()`. `authenticate_user()` validates credentials against `app_user`. `get_current_user()` caches the active user in `flask.g` from `session["user_id"]` (excluding `password_hash`). `@login_required` protects routes by returning HTTP `401` JSON for `/api/*` paths or redirecting to `/login` for HTML pages.
+  **Purpose:** Internal user authentication and role-based session authorization guards.  
+  **What it does:** Provides `prepare_password()` (currently returning raw password plaintext per project requirement, isolated in one place for future hashing) and constant-time `verify_password()`. `authenticate_user()` and `get_current_user()` join `role` and `user_role_assignment` to populate `role_id`, `role_name`, and `is_admin`. `@login_required` protects authenticated routes (`401` JSON / `/login` redirect), and `@admin_required` enforces admin access (`403` JSON / `403.html`).
 
 - **[ims/utils.py](file:///e:/works/YaraSystem/IMS%20-%20inventory%20management%20system/IMS/ims/utils.py)**  
   **Purpose:** Shared input sanitization, numeric/type parsing, and temporary Excel upload utilities.  
@@ -224,13 +248,13 @@ All API routes (except `/api/auth/login` and `/api/auth/logout`) require an auth
 
 | File | URL Prefix | Endpoints | Aim & Delegated Service |
 | :--- | :--- | :--- | :--- |
-| [pages.py](file:///e:/works/YaraSystem/IMS%20-%20inventory%20management%20system/IMS/ims/routes/pages.py) | `/` | `GET /login`, `/`, `/inventory`, `/transactions/new`, `/bom`, `/transactions`, `/reports`, `/excel`, `/users` | Serves Jinja2 HTML views for every section of the application (`login.html` redirects if already signed in). |
-| [api_auth.py](file:///e:/works/YaraSystem/IMS%20-%20inventory%20management%20system/IMS/ims/routes/api_auth.py) | `/api` | `POST /auth/login`, `POST /auth/logout`, `GET /auth/me`, `GET /users`, `POST /users`, `PUT /users/me/password` | Manages login sessions, lists users with transaction counts, creates users, and updates the current user's password via [ims/auth.py](file:///e:/works/YaraSystem/IMS%20-%20inventory%20management%20system/IMS/ims/auth.py) and `app_user`. |
-| [api_categories.py](file:///e:/works/YaraSystem/IMS%20-%20inventory%20management%20system/IMS/ims/routes/api_categories.py) | `/api/categories` | `GET`, `POST`, `PUT /<id>`, `DELETE /<id>` | Exposes flat & nested category tree CRUD via `category_service`. |
+| [pages.py](file:///e:/works/YaraSystem/IMS%20-%20inventory%20management%20system/IMS/ims/routes/pages.py) | `/` | `GET /login`, `/`, `/inventory`, `/transactions/new`, `/bom`, `/transactions`, `/reports`, `/excel` (admin only), `/users` | Serves Jinja2 HTML views for every section of the application (`403.html` for unauthorized `/excel` access). |
+| [api_auth.py](file:///e:/works/YaraSystem/IMS%20-%20inventory%20management%20system/IMS/ims/routes/api_auth.py) | `/api` | `POST /auth/login`, `POST /auth/logout`, `GET /auth/me`, `GET /roles`, `GET /users`, `POST /users`, `PUT /users/me/password` | Manages login sessions, lists roles, lists users with roles & transaction counts, creates users with `role_id` + `user_role_assignment`, and updates passwords via [ims/auth.py](file:///e:/works/YaraSystem/IMS%20-%20inventory%20management%20system/IMS/ims/auth.py). |
+| [api_categories.py](file:///e:/works/YaraSystem/IMS%20-%20inventory%20management%20system/IMS/ims/routes/api_categories.py) | `/api/categories` | `GET`, `POST`, `PUT /<id>` (admin only), `DELETE /<id>` (admin only) | Exposes category tree read/create to all users and edit/delete to admins via `category_service`. |
 | [api_items.py](file:///e:/works/YaraSystem/IMS%20-%20inventory%20management%20system/IMS/ims/routes/api_items.py) | `/api/items` | `GET`, `POST`, `GET /filter-options`, `GET /<id>`, `PUT /<id>` | Handles multi-field paginated component search, filter dropdown options, item detail + history retrieval, and item creation/editing via `item_service`. |
 | [api_transactions.py](file:///e:/works/YaraSystem/IMS%20-%20inventory%20management%20system/IMS/ims/routes/api_transactions.py) | `/api/transactions` | `GET`, `POST`, `POST /bulk` | Queries paginated transaction history, submits single-item stock movements, and submits shopping-cart bulk batches under `current_user["id"]` via `transaction_service`. |
 | [api_dashboard.py](file:///e:/works/YaraSystem/IMS%20-%20inventory%20management%20system/IMS/ims/routes/api_dashboard.py) | `/api` | `GET /dashboard/summary`, `GET /reports/analytics` | Supplies Dashboard KPIs/recent activity and Reports & Analytics breakdowns via `inventory_service`. |
-| [api_import.py](file:///e:/works/YaraSystem/IMS%20-%20inventory%20management%20system/IMS/ims/routes/api_import.py) | `/api/import` | `POST /upload`, `POST /inspect`, `POST /preview`, `POST /confirm` | Orchestrates multi-step `.xlsx` upload, sheet/column inspection, dry-run validation preview, and import execution under `current_user["id"]` via `import_service`. |
+| [api_import.py](file:///e:/works/YaraSystem/IMS%20-%20inventory%20management%20system/IMS/ims/routes/api_import.py) | `/api/import` | `POST /upload`, `POST /inspect`, `POST /preview`, `POST /confirm` (admin only) | Orchestrates admin-only `.xlsx` upload, sheet/column inspection, dry-run validation preview, and import execution under `current_user["id"]` via `import_service`. |
 | [api_bom.py](file:///e:/works/YaraSystem/IMS%20-%20inventory%20management%20system/IMS/ims/routes/api_bom.py) | `/api/bom` | `POST /inspect`, `POST /calculate`, `POST /export` | Provides read-only BOM upload inspection, availability/dual-cost calculation, and `bom_cost_report.xlsx` download via `bom_service`. |
 | [api_export.py](file:///e:/works/YaraSystem/IMS%20-%20inventory%20management%20system/IMS/ims/routes/api_export.py) | `/api/export` | `GET /inventory`, `GET /transactions` | Streams timestamped `.xlsx` files for filtered inventory and movement history reports via `export_service`. |
 

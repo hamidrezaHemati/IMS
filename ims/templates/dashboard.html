@@ -16,15 +16,17 @@
     <span class="quick-icon">+</span>
     <span>ثبت تراکنش جدید</span>
   </a>
-  <a class="quick-btn" href="{{ url_for('pages.excel') }}#import">
+  {% if current_user and current_user.is_admin %}
+  <a class="quick-btn" href="{{ url_for('pages.excel') }}">
     <span class="quick-icon">↑</span>
-    <span>ورود موجودی اولیه (اکسل)</span>
+    <span>ورود اکسل انبار</span>
   </a>
+  {% endif %}
   <a class="quick-btn" href="{{ url_for('pages.bom') }}">
     <span class="quick-icon">✓</span>
     <span>محاسبه‌گر هزینه BOM</span>
   </a>
-  <a class="quick-btn" href="{{ url_for('pages.excel') }}#export">
+  <a class="quick-btn" href="{{ url_for('pages.reports') }}#export">
     <span class="quick-icon">↓</span>
     <span>خروجی گزارش اکسل</span>
   </a>

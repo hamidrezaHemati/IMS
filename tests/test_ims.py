@@ -122,11 +122,18 @@ class IMSEndToEndTestCase(unittest.TestCase):
         bad = self.client.post("/api/auth/login", json={"user_name": "admin", "password": "wrong"})
         self.assertEqual(bad.status_code, 401)
 
-        # Valid login
+        # Valid login & role checks for seeded admin
         user = self.login_admin()
         self.assertEqual(user["user_name"], "admin")
+        self.assertEqual(user["role_name"], "admin")
+        self.assertTrue(user["is_admin"])
 
-        # Create user (plaintext password stored per requirement)
+        roles_resp = self.client.get("/api/roles")
+        self.assertEqual(roles_resp.status_code, 200)
+        role_names = {r["name"] for r in roles_resp.get_json()["roles"]}
+        self.assertEqual(role_names, {"admin", "employee"})
+
+        # Create user (defaults to employee role; plaintext password stored per requirement)
         created = self.client.post(
             "/api/users",
             json={
@@ -137,13 +144,29 @@ class IMSEndToEndTestCase(unittest.TestCase):
             },
         )
         self.assertEqual(created.status_code, 201)
+        sara = created.get_json()["user"]
+        self.assertEqual(sara["role_name"], "employee")
 
-        # Sign out, sign in as new user, change password, verify
+        db = self.app.extensions["db"]
+        with db.cursor() as cur:
+            cur.execute(
+                """
+                SELECT r.name
+                  FROM user_role_assignment ura
+                  JOIN role r ON r.id = ura.role_id
+                 WHERE ura.user_id = %s;
+                """,
+                (sara["id"],),
+            )
+            self.assertEqual(cur.fetchone()["name"], "employee")
+
+        # Sign out, sign in as employee, verify role, change password, verify
         self.client.post("/api/auth/logout")
-        self.assertEqual(
-            self.client.post("/api/auth/login", json={"user_name": "sara", "password": "secret123"}).status_code,
-            200,
-        )
+        sara_login = self.client.post("/api/auth/login", json={"user_name": "sara", "password": "secret123"})
+        self.assertEqual(sara_login.status_code, 200)
+        self.assertEqual(sara_login.get_json()["user"]["role_name"], "employee")
+        self.assertFalse(sara_login.get_json()["user"]["is_admin"])
+
         pw_upd = self.client.put(
             "/api/users/me/password",
             json={"current_password": "secret123", "new_password": "newpass456"},
@@ -530,7 +553,7 @@ class IMSEndToEndTestCase(unittest.TestCase):
     def test_06_exports_dashboard_analytics_and_pages(self):
         self.login_admin()
 
-        # Dashboard metrics (must show incomplete valuations due to UNPRICED-1 and NO low_stock key)
+        # Dashboard metrics (must show incomplete valuations due to UNPRICED-1, NO low_stock key, max 5 recent rows)
         dash = self.client.get("/api/dashboard/summary").get_json()
         m = dash["metrics"]
         self.assertNotIn("low_stock", m)
@@ -538,11 +561,12 @@ class IMSEndToEndTestCase(unittest.TestCase):
         self.assertFalse(m["wac_complete"])
         self.assertGreaterEqual(m["wac_missing_cost_items"], 1)
         self.assertGreaterEqual(m["zero_stock_count"], 1)
+        self.assertEqual(len(dash["recent_movements"]), 5)
+        self.assertEqual(len(dash["recent_items"]), 5)
 
         # Analytics endpoint
         analytics = self.client.get("/api/reports/analytics")
         self.assertEqual(analytics.status_code, 200)
-        self.assertTrue(len(analytics.get_json()["category_breakdown"]) >= 1)
 
         # Filtered Inventory Excel Export (e.g. SMD only)
         exp_inv = self.client.get("/api/export/inventory?mounting_type=SMD")
@@ -560,10 +584,86 @@ class IMSEndToEndTestCase(unittest.TestCase):
         wb_tx = load_workbook(BytesIO(exp_tx.data))
         self.assertGreaterEqual(wb_tx.active.max_row, 10)
 
-        # All UI routes load cleanly with HTTP 200
+        # All UI routes load cleanly with HTTP 200 for admin
         for route in ("/", "/inventory", "/transactions/new", "/bom", "/transactions", "/reports", "/excel", "/users"):
             resp = self.client.get(route)
             self.assertEqual(resp.status_code, 200, f"Route {route} returned {resp.status_code}")
+
+        # Verify UI structure requirements on /transactions/new, /reports, /excel, and admin sidebar
+        new_tx_html = self.client.get("/transactions/new").get_data(as_text=True)
+        for must_have in (
+            "tx-btn-new-item",
+            "tx-btn-new-category",
+            "tx-more-filters-btn",
+            "tx-secondary-filters",
+            "t-search",
+            "t-parent-cat",
+            "t-sub-cat",
+            "t-item-code",
+            "t-location",
+            "t-mounting",
+            "t-size",
+            "t-model",
+            "t-voltage",
+            "t-material",
+        ):
+            self.assertIn(must_have, new_tx_html)
+        for must_not_have in ("t-desc", "t-min-qty", "t-max-qty", "t-below", "t-min-wac", "t-max-wac", "t-min-lpc", "t-max-lpc"):
+            self.assertNotIn(must_not_have, new_tx_html)
+
+        reports_html = self.client.get("/reports").get_data(as_text=True)
+        self.assertNotIn("r-cat-tbody", reports_html)
+        self.assertIn("ex-inv-dl-btn", reports_html)
+        self.assertIn("ex-tx-dl-btn", reports_html)
+
+        excel_html = self.client.get("/excel").get_data(as_text=True)
+        self.assertIn("ورود اکسل انبار", excel_html)
+        self.assertNotIn("ex-inv-dl-btn", excel_html)
+
+    def test_07_employee_rbac_restrictions(self):
+        # Sign in as employee 'sara'
+        with self.app.test_client() as emp:
+            login_r = emp.post("/api/auth/login", json={"user_name": "sara", "password": "newpass456"})
+            self.assertEqual(login_r.status_code, 200)
+            self.assertFalse(login_r.get_json()["user"]["is_admin"])
+
+            # Employee CANNOT access /excel or import endpoints
+            self.assertEqual(emp.get("/excel").status_code, 403)
+            self.assertEqual(emp.post("/api/import/upload").status_code, 403)
+            self.assertEqual(emp.post("/api/import/inspect", json={}).status_code, 403)
+            self.assertEqual(emp.post("/api/import/preview", json={}).status_code, 403)
+            self.assertEqual(emp.post("/api/import/confirm", json={}).status_code, 403)
+
+            # Employee sidebar & dashboard hide /excel link, while /reports is accessible
+            dash_html = emp.get("/").get_data(as_text=True)
+            self.assertNotIn('href="/excel"', dash_html)
+            self.assertEqual(emp.get("/reports").status_code, 200)
+            self.assertEqual(emp.get("/api/export/inventory").status_code, 200)
+
+            # Employee CAN add categories, CANNOT edit or delete categories
+            cat_add = emp.post("/api/categories", json={"name": "EmpCreatedCat"})
+            self.assertEqual(cat_add.status_code, 201)
+            cat_id = cat_add.get_json()["category"]["id"]
+            self.assertEqual(emp.put(f"/api/categories/{cat_id}", json={"name": "Edited"}).status_code, 403)
+            self.assertEqual(emp.delete(f"/api/categories/{cat_id}").status_code, 403)
+
+            # Employee CANNOT assign admin role when creating a user
+            admin_role = [r for r in emp.get("/api/roles").get_json()["roles"] if r["name"] == "admin"][0]
+            bad_user = emp.post(
+                "/api/users",
+                json={
+                    "first_name": "X",
+                    "last_name": "Y",
+                    "user_name": "escalate",
+                    "password": "123",
+                    "role_id": admin_role["id"],
+                },
+            )
+            self.assertEqual(bad_user.status_code, 403)
+
+        # Admin cleans up employee-created category
+        self.login_admin()
+        self.assertEqual(self.client.delete(f"/api/categories/{cat_id}").status_code, 200)
 
 
 if __name__ == "__main__":

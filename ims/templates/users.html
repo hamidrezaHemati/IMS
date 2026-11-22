@@ -33,6 +33,10 @@
           <label for="u-password">رمز عبور *</label>
           <input id="u-password" class="input ltr" type="password" required>
         </div>
+        <div class="field" style="grid-column:1 / -1;">
+          <label for="u-role">نقش کاربری *</label>
+          <select id="u-role" class="select" required></select>
+        </div>
         <div style="grid-column:1 / -1;display:flex;justify-content:flex-end;">
           <button type="submit" class="btn btn-primary">ایجاد کاربر</button>
         </div>
@@ -77,12 +81,13 @@
           <th>شناسه</th>
           <th>نام و نام خانوادگی</th>
           <th>نام کاربری</th>
+          <th>نقش کاربری</th>
           <th class="text-right">تعداد تراکنش‌های ثبت‌شده</th>
           <th>تاریخ ایجاد</th>
         </tr>
       </thead>
       <tbody id="users-tbody">
-        <tr><td colspan="5" class="empty-state">در حال بارگذاری کاربران...</td></tr>
+        <tr><td colspan="6" class="empty-state">در حال بارگذاری کاربران...</td></tr>
       </tbody>
     </table>
   </div>

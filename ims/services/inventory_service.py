@@ -76,7 +76,7 @@ def get_dashboard_summary() -> dict:
             JOIN cat_info ci ON ci.id = i.category_id
             JOIN app_user u ON u.id = t.user_id
             ORDER BY t.created_at DESC, t.id DESC
-            LIMIT 10;
+            LIMIT 5;
             """
         )
         recent_movements = [dict(r) for r in cur.fetchall()]
@@ -102,7 +102,7 @@ def get_dashboard_summary() -> dict:
             JOIN inventory inv ON inv.item_id = i.id
             JOIN cat_info ci ON ci.id = i.category_id
             ORDER BY i.created_at DESC, i.id DESC
-            LIMIT 8;
+            LIMIT 5;
             """
         )
         recent_items = [dict(r) for r in cur.fetchall()]

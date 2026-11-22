@@ -51,7 +51,27 @@ export function translateServerError(msg) {
   if (/Only \.xlsx Excel workbooks are supported/i.test(text)) {
     return "فقط فایل‌های اکسل با پسوند .xlsx پشتیبانی می‌شوند.";
   }
+  if (/Admin access is required to assign the admin role/i.test(text)) {
+    return "فقط مدیر سیستم (ادمین) مجاز به اختصاص نقش ادمین به کاربر جدید است.";
+  }
+  if (/Admin access is required/i.test(text)) {
+    return "این عملیات فقط برای مدیر سیستم (ادمین) مجاز است.";
+  }
+  if (/Selected role does not exist/i.test(text)) {
+    return "نقش کاربری انتخاب‌شده یافت نشد.";
+  }
   return text;
+}
+
+export function isCurrentUserAdmin() {
+  return document.body && document.body.dataset.isAdmin === "true";
+}
+
+export function roleLabel(roleName) {
+  const key = String(roleName || "").toLowerCase();
+  if (key === "admin") return "مدیر سیستم";
+  if (key === "employee") return "کارمند";
+  return roleName || "نامشخص";
 }
 
 export function fmtQty(val) {

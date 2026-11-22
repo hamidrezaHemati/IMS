@@ -8,6 +8,10 @@
     <h1 class="page-title">ثبت تراکنش انبار (ورود و خروج)</h1>
     <p class="page-subtitle">قطعات مورد نظر را جستجو و به سبد تراکنش اضافه کنید؛ هر قطعه به صورت مستقل توسط تریگرهای PostgreSQL اعتبارسنجی و ثبت می‌شود</p>
   </div>
+  <div class="page-actions">
+    <button type="button" id="tx-btn-new-item" class="btn btn-primary">+ افزودن قطعه</button>
+    <button type="button" id="tx-btn-new-category" class="btn btn-accent">+ افزودن دسته‌بندی</button>
+  </div>
 </div>
 
 <div class="tx-workspace">
@@ -15,13 +19,14 @@
   <section class="card">
     <div class="card-header">
       <h2 class="card-title">جستجو و انتخاب قطعات</h2>
-      <button type="button" id="tx-filter-toggle" class="btn btn-sm filter-toggle-mobile">فیلترهای بیشتر</button>
+      <button type="button" id="tx-more-filters-btn" class="btn btn-sm" aria-expanded="false">نمایش فیلترهای بیشتر</button>
     </div>
 
     <div class="card-body" style="border-bottom:1px solid var(--border-color);">
+      <!-- فیلترهای اصلی -->
       <div class="form-grid" style="margin-bottom:10px;">
         <div class="field">
-          <label for="t-search">جستجوی کلی</label>
+          <label for="t-search">فیلتر کلی</label>
           <input id="t-search" class="input" type="search" placeholder="کد قطعه، مدل، کشو، سایز...">
         </div>
         <div class="field">
@@ -33,35 +38,34 @@
           <select id="t-sub-cat" class="select"></select>
         </div>
         <div class="field">
-          <label for="t-mounting">نوع نصب</label>
-          <select id="t-mounting" class="select">
-            <option value="">همه</option>
-            <option value="SMD">SMD</option>
-            <option value="DIP">DIP</option>
-          </select>
+          <label for="t-item-code">کد قطعه</label>
+          <input id="t-item-code" class="input ltr" type="text">
+        </div>
+        <div class="field">
+          <label for="t-location">محل نگهداری</label>
+          <input id="t-location" class="input" type="text" placeholder="مثلاً E1">
         </div>
       </div>
 
-      <div id="tx-adv-filters" class="filter-collapsible">
+      <!-- فیلترهای ثانویه -->
+      <div id="tx-secondary-filters" class="hidden" style="margin-top:10px;padding-top:10px;border-top:1px dashed var(--border-color);">
         <div class="form-grid">
-          <div class="field"><label for="t-item-code">کد قطعه</label><input id="t-item-code" class="input" type="text"></div>
+          <div class="field">
+            <label for="t-mounting">نوع نصب</label>
+            <select id="t-mounting" class="select">
+              <option value="">همه</option>
+              <option value="SMD">SMD</option>
+              <option value="DIP">DIP</option>
+            </select>
+          </div>
+          <div class="field"><label for="t-size">سایز / پکیج</label><input id="t-size" class="input" type="text" placeholder="مثلاً 603 یا 1206"></div>
           <div class="field"><label for="t-model">مدل</label><input id="t-model" class="input" type="text"></div>
-          <div class="field"><label for="t-size">سایز</label><input id="t-size" class="input" type="text"></div>
-          <div class="field"><label for="t-material">متریال</label><input id="t-material" class="input" type="text"></div>
           <div class="field"><label for="t-voltage">ولتاژ</label><input id="t-voltage" class="input" type="text"></div>
-          <div class="field"><label for="t-location">محل نگهداری / کشو</label><input id="t-location" class="input" type="text"></div>
-          <div class="field"><label for="t-desc">توضیحات</label><input id="t-desc" class="input" type="text"></div>
-          <div class="field"><label for="t-min-qty">حداقل موجودی</label><input id="t-min-qty" class="input" type="number" min="0" step="1"></div>
-          <div class="field"><label for="t-max-qty">حداکثر موجودی</label><input id="t-max-qty" class="input" type="number" min="0" step="1"></div>
-          <div class="field"><label for="t-below">کمتر از تعداد (&lt;)</label><input id="t-below" class="input" type="number" min="0" step="1"></div>
-          <div class="field"><label for="t-min-wac">حداقل میانگین موزون</label><input id="t-min-wac" class="input" type="number" min="0" step="0.0001"></div>
-          <div class="field"><label for="t-max-wac">حداکثر میانگین موزون</label><input id="t-max-wac" class="input" type="number" min="0" step="0.0001"></div>
-          <div class="field"><label for="t-min-lpc">حداقل آخرین قیمت</label><input id="t-min-lpc" class="input" type="number" min="0" step="0.0001"></div>
-          <div class="field"><label for="t-max-lpc">حداکثر آخرین قیمت</label><input id="t-max-lpc" class="input" type="number" min="0" step="0.0001"></div>
+          <div class="field"><label for="t-material">متریال</label><input id="t-material" class="input" type="text"></div>
         </div>
       </div>
 
-      <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;">
+      <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap;">
         <button type="button" id="t-apply-btn" class="btn btn-sm btn-primary">جستجو</button>
         <button type="button" id="t-reset-btn" class="btn btn-sm">پاک کردن</button>
       </div>
