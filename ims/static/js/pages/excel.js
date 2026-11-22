@@ -1,5 +1,5 @@
 import { apiFetch } from "../api.js";
-import { escapeHtml, fmtCost, fmtQty, toast, translateServerError } from "../ui.js";
+import { escapeHtml, fmtCost, fmtPriceHtml, fmtQty, toast, translateServerError } from "../ui.js";
 
 const IMPORT_FIELDS = [
   { key: "item_code", label: "کد قطعه", required: true },
@@ -8,7 +8,7 @@ const IMPORT_FIELDS = [
   { key: "model", label: "مدل", required: true },
   { key: "location", label: "محل نگهداری / کشو", required: true },
   { key: "quantity", label: "موجودی اولیه", required: true },
-  { key: "price", label: "قیمت واحد", required: false },
+  { key: "price", label: "قیمت واحد (ریال)", required: false },
   { key: "size", label: "سایز / پکیج", required: false },
   { key: "mounting_type", label: "نوع نصب (SMD/DIP)", required: false },
   { key: "voltage", label: "ولتاژ", required: false },
@@ -28,7 +28,7 @@ const STATUS_FA = {
 };
 
 const POLICY_EXPLANATION_FA = {
-  skip: "سیاست امن پیش‌فرض: فقط کدهای قطعه جدید ایجاد می‌شوند و موجودی اولیه آن‌ها از طریق تراکنش OPENING ثبت می‌شود (با مقداردهی میانگین موزون و آخرین قیمت خرید در صورت وجود قیمت). اقلامی که از قبل در سیستم وجود دارند نادیده گرفته می‌شوند و هیچ تغییری در موجودی یا قیمت آن‌ها ایجاد نخواهد شد.",
+  skip: "سیاست امن پیش‌فرض: فقط کدهای قطعه جدید ایجاد می‌شوند و موجودی اولیه آن‌ها از طریق تراکنش OPENING ثبت می‌شود (با مقداردهی قیمت میانگین و آخرین قیمت خرید بر حسب ریال در صورت وجود قیمت). اقلامی که از قبل در سیستم وجود دارند نادیده گرفته می‌شوند و هیچ تغییری در موجودی یا قیمت آن‌ها ایجاد نخواهد شد.",
   update_metadata: "اقلام جدید ایجاد شده و موجودی اولیه آن‌ها از طریق تراکنش OPENING ثبت می‌شود. برای کدهای تکراری موجود در سیستم، فقط مشخصات فنی قطعه به‌روزرسانی می‌شود و موجودی فعلی، قیمت‌ها و تاریخچه تراکنش‌های OPENING هرگز بازنویسی نخواهند شد.",
 };
 
@@ -206,7 +206,7 @@ function renderPreviewRows() {
         <td>${escapeHtml(r.mounting_type || "—")} / ${escapeHtml(r.size || "—")}</td>
         <td>${escapeHtml(r.location || "—")}</td>
         <td class="text-right num">${r.quantity !== null && r.quantity !== undefined ? fmtQty(r.quantity) : "—"}</td>
-        <td class="text-right num">${fmtCost(r.price, "—")}</td>
+        <td class="text-right num">${fmtPriceHtml(r.price, "—")}</td>
         <td style="font-size:0.82rem;">${msgs || `<span class="text-success">آماده ثبت</span>`}</td>
       </tr>`;
     })
@@ -221,7 +221,7 @@ function renderImportResults(res) {
   document.getElementById("imp-result-kpis").innerHTML = `
     <div class="card kpi-card"><span class="kpi-label">کل ردیف‌های اکسل</span><span class="kpi-value">${fmtQty(s.total_rows)}</span></div>
     <div class="card kpi-card"><span class="kpi-label">اقلام واردشده</span><span class="kpi-value text-success">${fmtQty(s.imported_items)}</span><span class="kpi-note">ایجاد شده: ${fmtQty(s.created_items)} • به‌روزرسانی شده: ${fmtQty(s.updated_items)}</span></div>
-    <div class="card kpi-card kpi-card-accent"><span class="kpi-label">تراکنش‌های OPENING</span><span class="kpi-value">${fmtQty(s.opening_transactions_created)}</span><span class="kpi-note">مقداردهی WAC و آخرین خرید</span></div>
+    <div class="card kpi-card kpi-card-accent"><span class="kpi-label">تراکنش‌های OPENING</span><span class="kpi-value">${fmtQty(s.opening_transactions_created)}</span><span class="kpi-note">مقداردهی قیمت میانگین و آخرین خرید</span></div>
     <div class="card kpi-card"><span class="kpi-label">دسته‌بندی‌های ایجادشده</span><span class="kpi-value">${fmtQty(s.categories_created)} / ${fmtQty(s.subcategories_created)}</span><span class="kpi-note">دسته اصلی / زیردسته</span></div>
     <div class="card kpi-card"><span class="kpi-label">رد شده / ناموفق</span><span class="kpi-value ${s.failed_rows > 0 ? "text-danger" : ""}">${fmtQty(s.skipped_items)} / ${fmtQty(s.failed_rows)}</span><span class="kpi-note">تکراری: ${fmtQty(s.duplicate_rows)} • نامعتبر: ${fmtQty(s.invalid_or_missing_rows)}</span></div>
   `;
@@ -235,7 +235,7 @@ function renderImportResults(res) {
       <td>${escapeHtml(r.model || "—")}</td>
       <td>${statusBadge(r.status)}</td>
       <td class="text-right num">${r.quantity !== undefined && r.quantity !== null ? fmtQty(r.quantity) : "—"}</td>
-      <td class="text-right num">${fmtCost(r.price, "—")}</td>
+      <td class="text-right num">${fmtPriceHtml(r.price, "—")}</td>
       <td class="text-secondary">${escapeHtml(r.reason ? translateImportMessage(r.reason) : (r.opening_transaction_id ? `تراکنش OPENING شماره ${r.opening_transaction_id}` : "قطعه ایجاد شد (موجودی ۰)"))}</td>
     </tr>`
     )

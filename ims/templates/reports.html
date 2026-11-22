@@ -1,76 +1,27 @@
 {% extends "base.html" %}
-{% block title %}گزارش‌ها و تحلیل — سامانه مدیریت انبار{% endblock %}
-{% block mobile_title %}گزارش‌ها و تحلیل{% endblock %}
+{% block title %}موجودی و گزارش انبار — سامانه مدیریت انبار{% endblock %}
+{% block mobile_title %}موجودی و گزارش انبار{% endblock %}
 
 {% block content %}
 <div class="page-header">
   <div>
-    <h1 class="page-title">گزارش‌ها و تحلیل موجودی</h1>
-    <p class="page-subtitle">خلاصه گردش‌های انبار و دریافت خروجی‌های اکسل پیشرفته با فیلترهای ترکیبی</p>
+    <h1 class="page-title">موجودی و گزارش انبار</h1>
+    <p class="page-subtitle">دریافت خروجی اکسل کامل موجودی فعلی و خروجی اکسل پیشرفته با فیلترهای ترکیبی (قیمت‌ها و ارزش‌ها بر حسب ریال و معادل تومان)</p>
   </div>
 </div>
 
-<section class="card" style="margin-bottom:18px;">
+<section class="card" style="margin-bottom:20px;">
   <div class="card-header">
-    <h2 class="card-title">بازه زمانی خلاصه گردش‌ها</h2>
+    <h2 class="card-title">خروجی سریع موجودی فعلی (.xlsx)</h2>
   </div>
-  <div class="card-body">
-    <div class="form-grid" style="align-items:end;">
-      <div class="field">
-        <label for="r-from">از تاریخ</label>
-        <input id="r-from" class="input ltr" type="date">
-      </div>
-      <div class="field">
-        <label for="r-to">تا تاریخ</label>
-        <input id="r-to" class="input ltr" type="date">
-      </div>
-      <div style="display:flex;gap:8px;">
-        <button type="button" id="r-apply-btn" class="btn btn-primary">به‌روزرسانی تحلیل</button>
-        <button type="button" id="r-reset-btn" class="btn">کل دوره</button>
-      </div>
-    </div>
+  <div class="card-body" style="display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;">
+    <p class="text-secondary" style="margin:0;">فایل اکسل کامل و به‌روز تمام قطعات و موجودی انبار را مستقیماً از پایگاه داده PostgreSQL دریافت کنید.</p>
+    <button type="button" id="r-dl-inv" class="btn btn-primary">دانلود گزارش کامل موجودی (.xlsx)</button>
   </div>
 </section>
 
-<div class="grid grid-2" style="margin-bottom:20px;">
-  <section class="card">
-    <div class="card-header">
-      <h2 class="card-title">خلاصه گردش‌ها بر اساس نوع تراکنش</h2>
-    </div>
-    <div class="table-wrap">
-      <table class="table">
-        <thead>
-          <tr>
-            <th>نوع تراکنش</th>
-            <th class="text-right">تعداد اسناد</th>
-            <th class="text-right">مجموع تعداد</th>
-            <th class="text-right">جمع ارزش شناخته‌شده</th>
-            <th>تکمیل بودن قیمت</th>
-          </tr>
-        </thead>
-        <tbody id="r-tx-tbody">
-          <tr><td colspan="5" class="empty-state">در حال بارگذاری...</td></tr>
-        </tbody>
-      </table>
-    </div>
-  </section>
-
-  <section class="card">
-    <div class="card-header">
-      <h2 class="card-title">خروجی‌های سریع اکسل</h2>
-    </div>
-    <div class="card-body" style="display:flex;flex-direction:column;gap:12px;">
-      <p class="text-secondary">فایل‌های اکسل به‌روز را مستقیماً از داده‌های زنده PostgreSQL دریافت کنید.</p>
-      <div style="display:flex;gap:10px;flex-wrap:wrap;">
-        <button type="button" id="r-dl-inv" class="btn btn-primary">دانلود گزارش کامل موجودی (.xlsx)</button>
-        <button type="button" id="r-dl-tx" class="btn btn-accent">دانلود گردش‌های بازه انتخابی (.xlsx)</button>
-      </div>
-    </div>
-  </section>
-</div>
-
-<!-- خروجی اکسل پیشرفته با فیلتر -->
-<div id="export" class="grid grid-2">
+<!-- خروجی اکسل پیشرفته موجودی فعلی با فیلتر -->
+<div id="export">
   <section class="card">
     <div class="card-header">
       <h2 class="card-title">خروجی اکسل پیشرفته موجودی فعلی (.xlsx)</h2>
@@ -105,35 +56,6 @@
         <button type="button" id="ex-inv-count-btn" class="btn">بررسی تعداد اقلام منطبق</button>
         <button type="button" id="ex-inv-dl-btn" class="btn btn-primary">دانلود فایل اکسل موجودی</button>
         <button type="button" id="ex-inv-reset-btn" class="btn">پاک کردن</button>
-      </div>
-    </div>
-  </section>
-
-  <section class="card">
-    <div class="card-header">
-      <h2 class="card-title">خروجی اکسل پیشرفته گردش‌های انبار (.xlsx)</h2>
-    </div>
-    <div class="card-body">
-      <div class="form-grid">
-        <div class="field"><label for="extx-from">از تاریخ</label><input id="extx-from" class="input ltr" type="date"></div>
-        <div class="field"><label for="extx-to">تا تاریخ</label><input id="extx-to" class="input ltr" type="date"></div>
-        <div class="field"><label for="extx-type">نوع تراکنش</label>
-          <select id="extx-type" class="select">
-            <option value="">همه انواع</option>
-            <option value="OPENING">موجودی اولیه (OPENING)</option>
-            <option value="PURCHASE_IN">خرید و ورود (PURCHASE_IN)</option>
-            <option value="OUT">خروج کالا (OUT)</option>
-            <option value="ADJUSTMENT_IN">تعدیل افزایشی (ADJUSTMENT_IN)</option>
-            <option value="ADJUSTMENT_OUT">تعدیل کاهشی (ADJUSTMENT_OUT)</option>
-          </select>
-        </div>
-        <div class="field"><label for="extx-user">کاربر</label>
-          <select id="extx-user" class="select"><option value="">همه کاربران</option></select>
-        </div>
-        <div class="field" style="grid-column:1 / -1;"><label for="extx-search">کد قطعه / مدل / توضیحات</label><input id="extx-search" class="input" type="text"></div>
-      </div>
-      <div style="display:flex;gap:8px;margin-top:16px;flex-wrap:wrap;">
-        <button type="button" id="ex-tx-dl-btn" class="btn btn-primary">دانلود گزارش اکسل گردش‌ها</button>
       </div>
     </div>
   </section>

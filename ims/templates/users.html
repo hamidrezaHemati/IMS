@@ -5,70 +5,44 @@
 {% block content %}
 <div class="page-header">
   <div>
-    <h1 class="page-title">کاربران داخلی و تنظیمات</h1>
-    <p class="page-subtitle">مدیریت حساب‌های کاربری همکاران و تغییر رمز عبور</p>
+    <h1 class="page-title">کاربران و تنظیمات سیستم</h1>
+    <p class="page-subtitle">مدیریت حساب‌های کاربری همکاران و تخصیص نقش‌ها (مخصوص مدیر سیستم)</p>
   </div>
+  <span class="badge badge-warning">دسترسی ویژه مدیر سیستم (ادمین)</span>
 </div>
 
-<div class="grid grid-2" style="margin-bottom:18px;">
-  <section class="card">
-    <div class="card-header">
-      <h2 class="card-title">افزودن کاربر جدید</h2>
-    </div>
-    <div class="card-body">
-      <form id="add-user-form" class="form-grid">
-        <div class="field">
-          <label for="u-first">نام *</label>
-          <input id="u-first" class="input" required maxlength="100">
-        </div>
-        <div class="field">
-          <label for="u-last">نام خانوادگی *</label>
-          <input id="u-last" class="input" required maxlength="100">
-        </div>
-        <div class="field">
-          <label for="u-username">نام کاربری *</label>
-          <input id="u-username" class="input ltr" required maxlength="80">
-        </div>
-        <div class="field">
-          <label for="u-password">رمز عبور *</label>
-          <input id="u-password" class="input ltr" type="password" required>
-        </div>
-        <div class="field" style="grid-column:1 / -1;">
-          <label for="u-role">نقش کاربری *</label>
-          <select id="u-role" class="select" required></select>
-        </div>
-        <div style="grid-column:1 / -1;display:flex;justify-content:flex-end;">
-          <button type="submit" class="btn btn-primary">ایجاد کاربر</button>
-        </div>
-      </form>
-    </div>
-  </section>
-
-  <section class="card">
-    <div class="card-header">
-      <h2 class="card-title">تغییر رمز عبور من</h2>
-    </div>
-    <div class="card-body">
-      <form id="change-pw-form" class="form-grid">
-        <div class="field" style="grid-column:1 / -1;">
-          <label for="pw-current">رمز عبور فعلی *</label>
-          <input id="pw-current" class="input ltr" type="password" required>
-        </div>
-        <div class="field">
-          <label for="pw-new">رمز عبور جدید *</label>
-          <input id="pw-new" class="input ltr" type="password" required>
-        </div>
-        <div class="field">
-          <label for="pw-confirm">تکرار رمز عبور جدید *</label>
-          <input id="pw-confirm" class="input ltr" type="password" required>
-        </div>
-        <div style="grid-column:1 / -1;display:flex;justify-content:flex-end;">
-          <button type="submit" class="btn btn-primary">به‌روزرسانی رمز عبور</button>
-        </div>
-      </form>
-    </div>
-  </section>
-</div>
+<section class="card" style="margin-bottom:18px;">
+  <div class="card-header">
+    <h2 class="card-title">افزودن کاربر جدید</h2>
+  </div>
+  <div class="card-body">
+    <form id="add-user-form" class="form-grid">
+      <div class="field">
+        <label for="u-first">نام *</label>
+        <input id="u-first" class="input" required maxlength="100">
+      </div>
+      <div class="field">
+        <label for="u-last">نام خانوادگی *</label>
+        <input id="u-last" class="input" required maxlength="100">
+      </div>
+      <div class="field">
+        <label for="u-username">نام کاربری *</label>
+        <input id="u-username" class="input ltr" required maxlength="80">
+      </div>
+      <div class="field">
+        <label for="u-password">رمز عبور *</label>
+        <input id="u-password" class="input ltr" type="password" required>
+      </div>
+      <div class="field">
+        <label for="u-role">نقش کاربری *</label>
+        <select id="u-role" class="select" required></select>
+      </div>
+      <div style="grid-column:1 / -1;display:flex;justify-content:flex-end;">
+        <button type="submit" class="btn btn-primary">ایجاد کاربر</button>
+      </div>
+    </form>
+  </div>
+</section>
 
 <section class="card">
   <div class="card-header">

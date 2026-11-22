@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block title %}تنظیمات کاربری — سامانه مدیریت انبار{% endblock %}
+{% block mobile_title %}تنظیمات{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1 class="page-title">تنظیمات حساب کاربری</h1>
+    <p class="page-subtitle">مشاهده اطلاعات حساب و تغییر رمز عبور شخصی</p>
+  </div>
+</div>
+
+<div class="grid grid-2">
+  <section class="card">
+    <div class="card-header">
+      <h2 class="card-title">مشخصات حساب کاربری</h2>
+    </div>
+    <div class="card-body">
+      {% if current_user %}
+      <div class="spec-grid">
+        <div class="spec-item">
+          <div class="spec-label">نام و نام خانوادگی</div>
+          <div class="spec-val">{{ current_user.first_name }} {{ current_user.last_name }}</div>
+        </div>
+        <div class="spec-item">
+          <div class="spec-label">نام کاربری</div>
+          <div class="spec-val mono">@{{ current_user.user_name }}</div>
+        </div>
+        <div class="spec-item">
+          <div class="spec-label">نقش کاربری</div>
+          <div class="spec-val">
+            <span class="badge {{ 'badge-success' if current_user.is_admin else 'badge-neutral' }}">
+              {{ 'مدیر سیستم (admin)' if current_user.is_admin else 'کارمند (employee)' }}
+            </span>
+          </div>
+        </div>
+      </div>
+      {% endif %}
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="card-header">
+      <h2 class="card-title">تغییر رمز عبور</h2>
+    </div>
+    <div class="card-body">
+      <form id="change-pw-form" class="form-grid">
+        <div class="field" style="grid-column:1 / -1;">
+          <label for="pw-current">رمز عبور فعلی *</label>
+          <input id="pw-current" class="input ltr" type="password" required>
+        </div>
+        <div class="field">
+          <label for="pw-new">رمز عبور جدید *</label>
+          <input id="pw-new" class="input ltr" type="password" required>
+        </div>
+        <div class="field">
+          <label for="pw-confirm">تکرار رمز عبور جدید *</label>
+          <input id="pw-confirm" class="input ltr" type="password" required>
+        </div>
+        <div style="grid-column:1 / -1;display:flex;justify-content:flex-end;">
+          <button type="submit" class="btn btn-primary">به‌روزرسانی رمز عبور</button>
+        </div>
+      </form>
+    </div>
+  </section>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script type="module" src="{{ url_for('static', filename='js/pages/settings.js') }}"></script>
+{% endblock %}

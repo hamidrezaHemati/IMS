@@ -23,16 +23,17 @@
 <section id="tab-items" class="card">
   <div class="card-header">
     <h2 class="card-title">فهرست قطعات انبار</h2>
-    <div style="display:flex;gap:8px;align-items:center;">
-      <button type="button" id="inv-filter-toggle" class="btn btn-sm filter-toggle-mobile">فیلترهای پیشرفته</button>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+      <button type="button" id="inv-more-filters-btn" class="btn btn-sm" aria-expanded="false">نمایش فیلترهای بیشتر</button>
       <a href="{{ url_for('pages.reports') }}#export" class="btn btn-sm">خروجی اکسل</a>
     </div>
   </div>
 
   <div class="card-body" style="border-bottom:1px solid var(--border-color);">
+    <!-- فیلترهای اصلی -->
     <div class="form-grid" style="margin-bottom:10px;">
       <div class="field">
-        <label for="f-search">جستجوی سریع</label>
+        <label for="f-search">فیلتر کلی</label>
         <input id="f-search" class="input" type="search" placeholder="کد، مدل، ولتاژ، محل نگهداری...">
       </div>
       <div class="field">
@@ -44,53 +45,61 @@
         <select id="f-sub-cat" class="select"></select>
       </div>
       <div class="field">
-        <label for="f-mounting">نوع نصب</label>
-        <select id="f-mounting" class="select">
-          <option value="">همه</option>
-          <option value="SMD">SMD</option>
-          <option value="DIP">DIP</option>
-        </select>
+        <label for="f-item-code">کد قطعه</label>
+        <input id="f-item-code" class="input ltr" type="text">
+      </div>
+      <div class="field">
+        <label for="f-location">محل نگهداری / کشو</label>
+        <input id="f-location" class="input" type="text" placeholder="مثلاً E1">
+      </div>
+      <div class="field">
+        <label for="f-below">کمتر از تعداد (&lt;)</label>
+        <input id="f-below" class="input" type="number" min="0" step="1">
+      </div>
+      <div class="field" style="justify-content:flex-end;">
+        <label class="checkbox-row"><input id="f-zero" type="checkbox"><span>فیلتر سریع: موجودی ۰</span></label>
       </div>
     </div>
 
-    <div id="inv-adv-filters" class="filter-collapsible">
+    <!-- فیلترهای ثانویه -->
+    <div id="inv-secondary-filters" class="hidden" style="margin-top:10px;padding-top:10px;border-top:1px dashed var(--border-color);">
       <div class="form-grid">
-        <div class="field"><label for="f-item-code">کد قطعه</label><input id="f-item-code" class="input" type="text"></div>
         <div class="field"><label for="f-model">مدل</label><input id="f-model" class="input" type="text"></div>
         <div class="field"><label for="f-size">سایز / پکیج</label><input id="f-size" class="input" type="text" placeholder="مثلاً 603 یا 1206"></div>
-        <div class="field"><label for="f-material">جنس / متریال</label><input id="f-material" class="input" type="text"></div>
+        <div class="field">
+          <label for="f-mounting">نوع نصب</label>
+          <select id="f-mounting" class="select">
+            <option value="">همه</option>
+            <option value="SMD">SMD</option>
+            <option value="DIP">DIP</option>
+          </select>
+        </div>
         <div class="field"><label for="f-voltage">ولتاژ</label><input id="f-voltage" class="input" type="text"></div>
-        <div class="field"><label for="f-location">محل نگهداری / کشو</label><input id="f-location" class="input" type="text"></div>
-        <div class="field"><label for="f-min-qty">حداقل موجودی</label><input id="f-min-qty" class="input" type="number" min="0" step="1"></div>
-        <div class="field"><label for="f-max-qty">حداکثر موجودی</label><input id="f-max-qty" class="input" type="number" min="0" step="1"></div>
-        <div class="field"><label for="f-below">کمتر از تعداد (&lt;)</label><input id="f-below" class="input" type="number" min="0" step="1"></div>
-        <div class="field"><label for="f-sort">مرتب‌سازی بر اساس</label>
-          <select id="f-sort" class="select">
-            <option value="item_code">کد قطعه</option>
-            <option value="model">مدل</option>
-            <option value="category">دسته‌بندی</option>
-            <option value="location">محل نگهداری</option>
-            <option value="quantity">موجودی فعلی</option>
-            <option value="weighted_avg_cost">میانگین موزون</option>
-            <option value="last_purchase_cost">آخرین قیمت خرید</option>
-            <option value="created_at">تاریخ ثبت</option>
-          </select>
-        </div>
-        <div class="field"><label for="f-sort-dir">ترتیب</label>
-          <select id="f-sort-dir" class="select">
-            <option value="asc">صعودی</option>
-            <option value="desc">نزولی</option>
-          </select>
-        </div>
-        <div class="field" style="justify-content:flex-end;">
-          <label class="checkbox-row"><input id="f-zero" type="checkbox"><span>فقط کالاهای با موجودی صفر</span></label>
-        </div>
+        <div class="field"><label for="f-material">متریال</label><input id="f-material" class="input" type="text"></div>
       </div>
     </div>
 
-    <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap;">
-      <button type="button" id="inv-apply-btn" class="btn btn-sm btn-primary">جستجو و فیلتر</button>
-      <button type="button" id="inv-reset-btn" class="btn btn-sm">پاک کردن فیلترها</button>
+    <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap;align-items:center;justify-content:space-between;">
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <button type="button" id="inv-apply-btn" class="btn btn-sm btn-primary">جستجو و فیلتر</button>
+        <button type="button" id="inv-reset-btn" class="btn btn-sm">پاک کردن فیلترها</button>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+        <select id="f-sort" class="select" style="width:auto;min-height:34px;" aria-label="مرتب‌سازی بر اساس">
+          <option value="item_code">مرتب: کد قطعه</option>
+          <option value="model">مرتب: مدل</option>
+          <option value="category">مرتب: دسته‌بندی</option>
+          <option value="location">مرتب: محل نگهداری</option>
+          <option value="quantity">مرتب: موجودی فعلی</option>
+          <option value="weighted_avg_cost">مرتب: قیمت میانگین</option>
+          <option value="last_purchase_cost">مرتب: آخرین قیمت خرید</option>
+          <option value="created_at">مرتب: تاریخ ثبت</option>
+        </select>
+        <select id="f-sort-dir" class="select" style="width:auto;min-height:34px;" aria-label="ترتیب">
+          <option value="asc">صعودی</option>
+          <option value="desc">نزولی</option>
+        </select>
+      </div>
     </div>
   </div>
 
@@ -105,7 +114,7 @@
           <th>ولتاژ / متریال</th>
           <th>محل نگهداری</th>
           <th class="text-right">موجودی</th>
-          <th class="text-right">میانگین موزون (WAC)</th>
+          <th class="text-right">قیمت میانگین</th>
           <th class="text-right">آخرین خرید</th>
           <th class="text-right">عملیات</th>
         </tr>

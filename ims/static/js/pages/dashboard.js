@@ -1,8 +1,9 @@
 import { apiFetch, buildQuery } from "../api.js";
 import {
   escapeHtml,
-  fmtCost,
   fmtDate,
+  fmtPriceHtml,
+  fmtPriceInline,
   fmtQty,
   openItemDetailModal,
   populateCategorySelects,
@@ -36,13 +37,13 @@ function renderKpis(m) {
       <span class="kpi-note">مجموع کل موجودی فیزیکی قطعات</span>
     </div>
     <div class="card kpi-card kpi-card-accent">
-      <span class="kpi-label">ارزش انبار (میانگین موزون)</span>
-      <span class="kpi-value">${fmtCost(m.wac_known_value)}</span>
+      <span class="kpi-label">ارزش انبار (قیمت میانگین)</span>
+      <div class="kpi-value" style="font-size:1.25rem;">${fmtPriceHtml(m.wac_known_value, "۰ ریال")}</div>
       ${wacNote}
     </div>
     <div class="card kpi-card kpi-card-accent">
       <span class="kpi-label">ارزش انبار (آخرین خرید)</span>
-      <span class="kpi-value">${fmtCost(m.lpc_known_value)}</span>
+      <div class="kpi-value" style="font-size:1.25rem;">${fmtPriceHtml(m.lpc_known_value, "۰ ریال")}</div>
       ${lpcNote}
     </div>
     <div class="card kpi-card">
@@ -158,8 +159,8 @@ async function loadInventoryTable(page = 1) {
           <td>${escapeHtml(it.mounting_type || "—")}</td>
           <td>${escapeHtml(it.location)}</td>
           <td class="text-right">${stockBadge(it.quantity)}</td>
-          <td class="text-right num">${fmtCost(it.weighted_avg_cost, "نامشخص")}</td>
-          <td class="text-right num">${fmtCost(it.last_purchase_cost, "نامشخص")}</td>
+          <td class="text-right num">${fmtPriceHtml(it.weighted_avg_cost, "نامشخص")}</td>
+          <td class="text-right num">${fmtPriceHtml(it.last_purchase_cost, "نامشخص")}</td>
         </tr>`
         )
         .join("");
@@ -179,8 +180,8 @@ async function loadInventoryTable(page = 1) {
           <div class="mobile-item-meta">
             <div><span class="text-muted">محل:</span> ${escapeHtml(it.location)}</div>
             <div><span class="text-muted">نصب/سایز:</span> ${escapeHtml(it.mounting_type || "—")} / ${escapeHtml(it.size || "—")}</div>
-            <div><span class="text-muted">میانگین موزون:</span> <span class="num">${fmtCost(it.weighted_avg_cost, "نامشخص")}</span></div>
-            <div><span class="text-muted">آخرین خرید:</span> <span class="num">${fmtCost(it.last_purchase_cost, "نامشخص")}</span></div>
+            <div><span class="text-muted">قیمت میانگین:</span> <span class="num">${fmtPriceInline(it.weighted_avg_cost, "نامشخص")}</span></div>
+            <div><span class="text-muted">آخرین خرید:</span> <span class="num">${fmtPriceInline(it.last_purchase_cost, "نامشخص")}</span></div>
           </div>
         </div>`
         )

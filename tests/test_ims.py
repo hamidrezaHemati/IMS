@@ -576,6 +576,8 @@ class IMSEndToEndTestCase(unittest.TestCase):
         headers = [cell.value for cell in ws_inv[1]]
         self.assertIn("Item Code", headers)
         self.assertIn("Total Value (WAC)", headers)
+        self.assertIn("Weighted Avg Cost (Rial)", headers)
+        self.assertIn("Total Value (WAC) (Toman)", headers)
         self.assertGreaterEqual(ws_inv.max_row, 4)
 
         # Filtered Transaction Excel Export
@@ -585,22 +587,46 @@ class IMSEndToEndTestCase(unittest.TestCase):
         self.assertGreaterEqual(wb_tx.active.max_row, 10)
 
         # All UI routes load cleanly with HTTP 200 for admin
-        for route in ("/", "/inventory", "/transactions/new", "/bom", "/transactions", "/reports", "/excel", "/users"):
+        for route in ("/", "/inventory", "/transactions/new", "/bom", "/transactions", "/reports", "/excel", "/users", "/settings"):
             resp = self.client.get(route)
             self.assertEqual(resp.status_code, 200, f"Route {route} returned {resp.status_code}")
 
-        # Verify UI structure requirements on /transactions/new, /reports, /excel, and admin sidebar
+        # Verify UI structure requirements on /inventory, /transactions/new, /transactions, /reports, /excel, /users, /settings
+        inv_html = self.client.get("/inventory").get_data(as_text=True)
+        for must_have in (
+            "inv-more-filters-btn",
+            "inv-secondary-filters",
+            "f-search",
+            "f-parent-cat",
+            "f-sub-cat",
+            "f-item-code",
+            "f-location",
+            "f-below",
+            "f-zero",
+            "f-model",
+            "f-size",
+            "f-mounting",
+            "f-voltage",
+            "f-material",
+            "قیمت میانگین",
+        ):
+            self.assertIn(must_have, inv_html)
+
         new_tx_html = self.client.get("/transactions/new").get_data(as_text=True)
         for must_have in (
             "tx-btn-new-item",
             "tx-btn-new-category",
             "tx-more-filters-btn",
             "tx-secondary-filters",
+            "tx-catalog-scroll",
+            "tx-match-count",
             "t-search",
             "t-parent-cat",
             "t-sub-cat",
             "t-item-code",
             "t-location",
+            "t-below",
+            "t-zero",
             "t-mounting",
             "t-size",
             "t-model",
@@ -608,17 +634,39 @@ class IMSEndToEndTestCase(unittest.TestCase):
             "t-material",
         ):
             self.assertIn(must_have, new_tx_html)
-        for must_not_have in ("t-desc", "t-min-qty", "t-max-qty", "t-below", "t-min-wac", "t-max-wac", "t-min-lpc", "t-max-lpc"):
+        new_tx_js = self.client.get("/static/js/pages/new_transaction.js").get_data(as_text=True)
+        for js_token in ("قیمت میانگین", "ریال", "data-toman-preview"):
+            self.assertIn(js_token, new_tx_js)
+        for must_not_have in ("t-desc", "t-min-qty", "t-max-qty", "t-min-wac", "t-max-wac", "t-min-lpc", "t-max-lpc", "tx-catalog-pagination"):
             self.assertNotIn(must_not_have, new_tx_html)
 
         reports_html = self.client.get("/reports").get_data(as_text=True)
-        self.assertNotIn("r-cat-tbody", reports_html)
+        self.assertIn("موجودی و گزارش انبار", reports_html)
+        self.assertIn("r-dl-inv", reports_html)
         self.assertIn("ex-inv-dl-btn", reports_html)
-        self.assertIn("ex-tx-dl-btn", reports_html)
+        for moved_id in ("r-cat-tbody", "r-tx-tbody", "r-dl-tx", "ex-tx-dl-btn", "r-from", "extx-from"):
+            self.assertNotIn(moved_id, reports_html)
+
+        tx_html = self.client.get("/transactions").get_data(as_text=True)
+        for moved_id in ("r-from", "r-to", "r-tx-tbody", "r-dl-tx", "extx-from", "ex-tx-dl-btn"):
+            self.assertIn(moved_id, tx_html)
+
+        settings_html = self.client.get("/settings").get_data(as_text=True)
+        self.assertIn("change-pw-form", settings_html)
+
+        users_html = self.client.get("/users").get_data(as_text=True)
+        self.assertNotIn("change-pw-form", users_html)
 
         excel_html = self.client.get("/excel").get_data(as_text=True)
         self.assertIn("ورود اکسل انبار", excel_html)
         self.assertNotIn("ex-inv-dl-btn", excel_html)
+
+        # Verify old 'میانگین موزون' / 'میانگین موزود' terminology is completely removed from UI templates and JS
+        repo_root = Path(__file__).resolve().parent.parent / "ims"
+        for ui_file in (*repo_root.joinpath("templates").rglob("*.html"), *repo_root.joinpath("static").rglob("*.js")):
+            text = ui_file.read_text(encoding="utf-8")
+            self.assertNotIn("میانگین موزون", text, f"Found deprecated term in {ui_file}")
+            self.assertNotIn("میانگین موزود", text, f"Found deprecated term in {ui_file}")
 
     def test_07_employee_rbac_restrictions(self):
         # Sign in as employee 'sara'
@@ -634,9 +682,15 @@ class IMSEndToEndTestCase(unittest.TestCase):
             self.assertEqual(emp.post("/api/import/preview", json={}).status_code, 403)
             self.assertEqual(emp.post("/api/import/confirm", json={}).status_code, 403)
 
-            # Employee sidebar & dashboard hide /excel link, while /reports is accessible
+            # Employee CANNOT access /users page or POST /api/users, CAN access /settings
+            self.assertEqual(emp.get("/users").status_code, 403)
+            self.assertEqual(emp.get("/settings").status_code, 200)
+
+            # Employee sidebar & dashboard hide /excel and /users links, while /reports & /settings are visible and accessible
             dash_html = emp.get("/").get_data(as_text=True)
             self.assertNotIn('href="/excel"', dash_html)
+            self.assertNotIn('href="/users"', dash_html)
+            self.assertIn('href="/settings"', dash_html)
             self.assertEqual(emp.get("/reports").status_code, 200)
             self.assertEqual(emp.get("/api/export/inventory").status_code, 200)
 
@@ -647,19 +701,22 @@ class IMSEndToEndTestCase(unittest.TestCase):
             self.assertEqual(emp.put(f"/api/categories/{cat_id}", json={"name": "Edited"}).status_code, 403)
             self.assertEqual(emp.delete(f"/api/categories/{cat_id}").status_code, 403)
 
-            # Employee CANNOT assign admin role when creating a user
-            admin_role = [r for r in emp.get("/api/roles").get_json()["roles"] if r["name"] == "admin"][0]
-            bad_user = emp.post(
-                "/api/users",
-                json={
-                    "first_name": "X",
-                    "last_name": "Y",
-                    "user_name": "escalate",
-                    "password": "123",
-                    "role_id": admin_role["id"],
-                },
-            )
-            self.assertEqual(bad_user.status_code, 403)
+            # Employee CANNOT create any user (neither employee nor admin)
+            roles = emp.get("/api/roles").get_json()["roles"]
+            emp_role = [r for r in roles if r["name"] == "employee"][0]
+            admin_role = [r for r in roles if r["name"] == "admin"][0]
+            for target_role in (emp_role["id"], admin_role["id"]):
+                bad_user = emp.post(
+                    "/api/users",
+                    json={
+                        "first_name": "X",
+                        "last_name": "Y",
+                        "user_name": f"escalate_{target_role}",
+                        "password": "123",
+                        "role_id": target_role,
+                    },
+                )
+                self.assertEqual(bad_user.status_code, 403)
 
         # Admin cleans up employee-created category
         self.login_admin()

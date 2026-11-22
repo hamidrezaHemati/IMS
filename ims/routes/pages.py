@@ -56,6 +56,12 @@ def excel():
 
 
 @bp.get("/users")
-@login_required
+@admin_required
 def users():
     return render_template("users.html", active_page="users")
+
+
+@bp.get("/settings")
+@login_required
+def settings():
+    return render_template("settings.html", active_page="settings")

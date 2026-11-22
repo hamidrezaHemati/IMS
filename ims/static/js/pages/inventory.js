@@ -2,7 +2,8 @@ import { apiFetch, buildQuery } from "../api.js";
 import { openCategoryModal, openItemModal } from "../modals.js";
 import {
   escapeHtml,
-  fmtCost,
+  fmtPriceHtml,
+  fmtPriceInline,
   fmtQty,
   isCurrentUserAdmin,
   openItemDetailModal,
@@ -116,17 +117,15 @@ function getFilterParams(page = 1) {
     page_size: 25,
     search: document.getElementById("f-search").value,
     category_id: subCat || parentCat,
-    mounting_type: document.getElementById("f-mounting").value,
     item_code: document.getElementById("f-item-code").value,
-    model: document.getElementById("f-model").value,
-    size: document.getElementById("f-size").value,
-    material: document.getElementById("f-material").value,
-    voltage: document.getElementById("f-voltage").value,
     location: document.getElementById("f-location").value,
-    min_quantity: document.getElementById("f-min-qty").value,
-    max_quantity: document.getElementById("f-max-qty").value,
     below_threshold: document.getElementById("f-below").value,
     zero_stock: document.getElementById("f-zero").checked ? "true" : "",
+    model: document.getElementById("f-model").value,
+    size: document.getElementById("f-size").value,
+    mounting_type: document.getElementById("f-mounting").value,
+    voltage: document.getElementById("f-voltage").value,
+    material: document.getElementById("f-material").value,
     sort_by: document.getElementById("f-sort").value,
     sort_dir: document.getElementById("f-sort-dir").value,
   };
@@ -158,8 +157,8 @@ async function loadItems(page = 1) {
           <td>${escapeHtml(it.voltage || "—")} / ${escapeHtml(it.material || "—")}</td>
           <td>${escapeHtml(it.location)}</td>
           <td class="text-right">${stockBadge(it.quantity)}</td>
-          <td class="text-right num">${fmtCost(it.weighted_avg_cost, "نامشخص")}</td>
-          <td class="text-right num">${fmtCost(it.last_purchase_cost, "نامشخص")}</td>
+          <td class="text-right num">${fmtPriceHtml(it.weighted_avg_cost, "نامشخص")}</td>
+          <td class="text-right num">${fmtPriceHtml(it.last_purchase_cost, "نامشخص")}</td>
           <td class="text-right" style="white-space:nowrap;">
             <button type="button" class="btn btn-sm" data-edit-item="${it.id}">ویرایش</button>
           </td>
@@ -181,8 +180,8 @@ async function loadItems(page = 1) {
           <div class="mobile-item-meta">
             <div><span class="text-muted">محل:</span> ${escapeHtml(it.location)}</div>
             <div><span class="text-muted">نصب/سایز:</span> ${escapeHtml(it.mounting_type || "—")} / ${escapeHtml(it.size || "—")}</div>
-            <div><span class="text-muted">میانگین موزون:</span> <span class="num">${fmtCost(it.weighted_avg_cost, "نامشخص")}</span></div>
-            <div><span class="text-muted">آخرین خرید:</span> <span class="num">${fmtCost(it.last_purchase_cost, "نامشخص")}</span></div>
+            <div><span class="text-muted">قیمت میانگین:</span> <span class="num">${fmtPriceInline(it.weighted_avg_cost, "نامشخص")}</span></div>
+            <div><span class="text-muted">آخرین خرید:</span> <span class="num">${fmtPriceInline(it.last_purchase_cost, "نامشخص")}</span></div>
           </div>
           <div style="display:flex;gap:8px;justify-content:flex-end;">
             <button type="button" class="btn btn-sm" data-view-item="${it.id}">جزئیات</button>
@@ -236,11 +235,13 @@ document.addEventListener("DOMContentLoaded", async () => {
     });
   });
 
-  const toggleBtn = document.getElementById("inv-filter-toggle");
-  const advPanel = document.getElementById("inv-adv-filters");
-  if (toggleBtn && advPanel) {
-    toggleBtn.addEventListener("click", () => advPanel.classList.toggle("open"));
-  }
+  const moreBtn = document.getElementById("inv-more-filters-btn");
+  const secFilters = document.getElementById("inv-secondary-filters");
+  moreBtn.addEventListener("click", () => {
+    const isHidden = secFilters.classList.toggle("hidden");
+    moreBtn.textContent = isHidden ? "نمایش فیلترهای بیشتر" : "بستن فیلترهای بیشتر";
+    moreBtn.setAttribute("aria-expanded", String(!isHidden));
+  });
 
   document.getElementById("btn-new-item").addEventListener("click", () => launchItemModal());
   document.getElementById("btn-new-category").addEventListener("click", () => launchCategoryModal());
@@ -252,8 +253,8 @@ document.addEventListener("DOMContentLoaded", async () => {
   });
   document.getElementById("inv-reset-btn").addEventListener("click", () => {
     [
-      "f-search", "f-item-code", "f-model", "f-size", "f-material",
-      "f-voltage", "f-location", "f-min-qty", "f-max-qty", "f-below",
+      "f-search", "f-item-code", "f-location", "f-below",
+      "f-model", "f-size", "f-voltage", "f-material",
     ].forEach((id) => { document.getElementById(id).value = ""; });
     document.getElementById("f-mounting").value = "";
     document.getElementById("f-parent-cat").value = "";

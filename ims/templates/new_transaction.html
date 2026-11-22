@@ -18,7 +18,10 @@
   <!-- کاتالوگ جستجو و انتخاب قطعات -->
   <section class="card">
     <div class="card-header">
-      <h2 class="card-title">جستجو و انتخاب قطعات</h2>
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+        <h2 class="card-title">جستجو و انتخاب قطعات</h2>
+        <span id="tx-match-count" class="badge badge-info num">۰ مورد منطبق</span>
+      </div>
       <button type="button" id="tx-more-filters-btn" class="btn btn-sm" aria-expanded="false">نمایش فیلترهای بیشتر</button>
     </div>
 
@@ -44,6 +47,13 @@
         <div class="field">
           <label for="t-location">محل نگهداری</label>
           <input id="t-location" class="input" type="text" placeholder="مثلاً E1">
+        </div>
+        <div class="field">
+          <label for="t-below">کمتر از تعداد (&lt;)</label>
+          <input id="t-below" class="input" type="number" min="0" step="1">
+        </div>
+        <div class="field" style="justify-content:flex-end;">
+          <label class="checkbox-row"><input id="t-zero" type="checkbox"><span>فیلتر سریع: موجودی ۰</span></label>
         </div>
       </div>
 
@@ -71,10 +81,14 @@
       </div>
     </div>
 
-    <div id="tx-catalog-list" class="card-body" style="display:flex;flex-direction:column;gap:10px;">
+    <!-- لیست اسکرول‌شونده (حداکثر ۸ آیتم هم‌زمان در نما) -->
+    <div id="tx-catalog-list" class="tx-catalog-scroll">
       <div class="empty-state">در حال بارگذاری قطعات...</div>
     </div>
-    <div id="tx-catalog-pagination" class="pagination"></div>
+    <div id="tx-catalog-footer" class="tx-catalog-footer">
+      <span id="tx-catalog-status">در حال بارگذاری...</span>
+      <span class="text-muted" style="font-size:0.78rem;">برای مشاهده سایر موارد، لیست را به پایین اسکرول کنید</span>
+    </div>
   </section>
 
   <!-- سبد تراکنش -->

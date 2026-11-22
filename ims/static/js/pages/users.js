@@ -1,17 +1,12 @@
 import { apiFetch } from "../api.js";
-import { escapeHtml, fmtDate, fmtQty, isCurrentUserAdmin, roleLabel, toast } from "../ui.js";
+import { escapeHtml, fmtDate, fmtQty, roleLabel, toast } from "../ui.js";
 
 async function loadRoles() {
   const roleSel = document.getElementById("u-role");
   try {
     const data = await apiFetch("/api/roles");
     const roles = data.roles || [];
-    const canAssignAdmin = isCurrentUserAdmin();
-    const visibleRoles = canAssignAdmin
-      ? roles
-      : roles.filter((r) => String(r.name || "").toLowerCase() !== "admin");
-
-    roleSel.innerHTML = visibleRoles
+    roleSel.innerHTML = roles
       .map(
         (r) =>
           `<option value="${r.id}" ${
@@ -67,30 +62,6 @@ document.addEventListener("DOMContentLoaded", () => {
       await loadRoles();
       toast("کاربر جدید ایجاد شد.", "success");
       loadUsers();
-    } catch (err) {
-      toast(err.message, "error");
-    }
-  });
-
-  document.getElementById("change-pw-form").addEventListener("submit", async (e) => {
-    e.preventDefault();
-    const newPw = document.getElementById("pw-new").value;
-    const confirmPw = document.getElementById("pw-confirm").value;
-    if (newPw !== confirmPw) {
-      toast("رمز عبور جدید و تکرار آن یکسان نیستند.", "warning");
-      return;
-    }
-
-    try {
-      await apiFetch("/api/users/me/password", {
-        method: "PUT",
-        body: {
-          current_password: document.getElementById("pw-current").value,
-          new_password: newPw,
-        },
-      });
-      e.target.reset();
-      toast("رمز عبور با موفقیت تغییر یافت.", "success");
     } catch (err) {
       toast(err.message, "error");
     }

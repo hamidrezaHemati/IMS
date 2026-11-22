@@ -1,5 +1,5 @@
 import { apiFetch, downloadExcel } from "../api.js";
-import { escapeHtml, fmtCost, fmtQty, toast } from "../ui.js";
+import { escapeHtml, fmtPriceHtml, fmtPriceInline, fmtQty, toast } from "../ui.js";
 
 let currentUploadId = null;
 let lastAnalysis = null;
@@ -67,12 +67,12 @@ function renderSummary(analysis) {
   const container = document.getElementById("bom-summary-kpis");
 
   const wacHtml = c.wac_complete
-    ? `<span class="kpi-value">${fmtCost(c.wac_total)}</span><span class="kpi-note text-success">محاسبه کامل برای همه اقلام</span>`
-    : `<span class="kpi-value text-warning">ناقص / نامشخص</span><span class="kpi-note">جمع اقلام قیمت‌دار: ${fmtCost(c.wac_known_subtotal)} (${fmtQty(c.wac_missing_count)} قطعه بدون قیمت یا ناشناخته)</span>`;
+    ? `<div class="kpi-value" style="font-size:1.2rem;">${fmtPriceHtml(c.wac_total)}</div><span class="kpi-note text-success">محاسبه کامل برای همه اقلام</span>`
+    : `<span class="kpi-value text-warning">ناقص / نامشخص</span><span class="kpi-note">جمع اقلام قیمت‌دار: ${fmtPriceInline(c.wac_known_subtotal)} (${fmtQty(c.wac_missing_count)} قطعه بدون قیمت یا ناشناخته)</span>`;
 
   const lpcHtml = c.lpc_complete
-    ? `<span class="kpi-value">${fmtCost(c.lpc_total)}</span><span class="kpi-note text-success">محاسبه کامل برای همه اقلام</span>`
-    : `<span class="kpi-value text-warning">ناقص / نامشخص</span><span class="kpi-note">جمع اقلام قیمت‌دار: ${fmtCost(c.lpc_known_subtotal)} (${fmtQty(c.lpc_missing_count)} قطعه بدون قیمت یا ناشناخته)</span>`;
+    ? `<div class="kpi-value" style="font-size:1.2rem;">${fmtPriceHtml(c.lpc_total)}</div><span class="kpi-note text-success">محاسبه کامل برای همه اقلام</span>`
+    : `<span class="kpi-value text-warning">ناقص / نامشخص</span><span class="kpi-note">جمع اقلام قیمت‌دار: ${fmtPriceInline(c.lpc_known_subtotal)} (${fmtQty(c.lpc_missing_count)} قطعه بدون قیمت یا ناشناخته)</span>`;
 
   container.innerHTML = `
     <div class="card kpi-card">
@@ -86,7 +86,7 @@ function renderSummary(analysis) {
       <span class="kpi-note">کمبود: ${fmtQty(a.insufficient)} • ناموجود: ${fmtQty(a.out_of_stock)} • ناشناخته: ${fmtQty(a.unknown)}</span>
     </div>
     <div class="card kpi-card kpi-card-accent">
-      <span class="kpi-label">هزینه کل BOM (میانگین موزون)</span>
+      <span class="kpi-label">هزینه کل BOM (قیمت میانگین)</span>
       ${wacHtml}
     </div>
     <div class="card kpi-card kpi-card-accent">
@@ -165,22 +165,22 @@ function renderCostTable(analysis) {
       <td class="mono"><strong>${escapeHtml(r.item_code)}</strong></td>
       <td>${escapeHtml(r.item_name)}${r.is_unknown ? ` <span class="badge badge-danger">کد ناشناخته</span>` : ""}</td>
       <td class="text-right num"><strong>${fmtQty(r.required_qty)}</strong></td>
-      <td class="text-right num">${r.wac_missing ? `<span class="text-warning">نامشخص</span>` : fmtCost(r.weighted_avg_cost)}</td>
-      <td class="text-right num">${r.wac_missing ? `<span class="text-warning">نامشخص</span>` : fmtCost(r.wac_line_total)}</td>
-      <td class="text-right num">${r.lpc_missing ? `<span class="text-warning">نامشخص</span>` : fmtCost(r.last_purchase_cost)}</td>
-      <td class="text-right num">${r.lpc_missing ? `<span class="text-warning">نامشخص</span>` : fmtCost(r.lpc_line_total)}</td>
+      <td class="text-right num">${r.wac_missing ? `<span class="text-warning">نامشخص</span>` : fmtPriceHtml(r.weighted_avg_cost)}</td>
+      <td class="text-right num">${r.wac_missing ? `<span class="text-warning">نامشخص</span>` : fmtPriceHtml(r.wac_line_total)}</td>
+      <td class="text-right num">${r.lpc_missing ? `<span class="text-warning">نامشخص</span>` : fmtPriceHtml(r.last_purchase_cost)}</td>
+      <td class="text-right num">${r.lpc_missing ? `<span class="text-warning">نامشخص</span>` : fmtPriceHtml(r.lpc_line_total)}</td>
     </tr>`
     )
     .join("");
 
   tfoot.innerHTML = `
     <tr style="background:var(--bg-subtle);font-weight:700;">
-      <td colspan="4">جمع کل BOM (بر مبنای میانگین موزون WAC)</td>
+      <td colspan="4">جمع کل BOM (بر مبنای قیمت میانگین)</td>
       <td class="text-right num">
         ${
           cs.wac_complete
-            ? fmtCost(cs.wac_total)
-            : `<span class="text-warning">ناقص (جمع شناخته‌شده: ${fmtCost(cs.wac_known_subtotal)})</span>`
+            ? fmtPriceHtml(cs.wac_total)
+            : `<span class="text-warning">ناقص (جمع شناخته‌شده: ${fmtPriceInline(cs.wac_known_subtotal)})</span>`
         }
       </td>
       <td></td>
@@ -193,8 +193,8 @@ function renderCostTable(analysis) {
       <td class="text-right num">
         ${
           cs.lpc_complete
-            ? fmtCost(cs.lpc_total)
-            : `<span class="text-warning">ناقص (جمع شناخته‌شده: ${fmtCost(cs.lpc_known_subtotal)})</span>`
+            ? fmtPriceHtml(cs.lpc_total)
+            : `<span class="text-warning">ناقص (جمع شناخته‌شده: ${fmtPriceInline(cs.lpc_known_subtotal)})</span>`
         }
       </td>
     </tr>

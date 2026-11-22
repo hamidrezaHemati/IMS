@@ -46,7 +46,7 @@ export function translateServerError(msg) {
     return "وارد کردن قیمت واحد برای تراکنش خرید (PURCHASE_IN) الزامی است.";
   }
   if (/Price must not be specified for OUT/i.test(text)) {
-    return "برای تراکنش‌های خروج نباید قیمت وارد شود؛ هزینه از میانگین موزون محاسبه می‌شود.";
+    return "برای تراکنش‌های خروج نباید قیمت وارد شود؛ هزینه از قیمت میانگین محاسبه می‌شود.";
   }
   if (/Only \.xlsx Excel workbooks are supported/i.test(text)) {
     return "فقط فایل‌های اکسل با پسوند .xlsx پشتیبانی می‌شوند.";
@@ -79,14 +79,57 @@ export function fmtQty(val) {
   return Number(val).toLocaleString("en-US");
 }
 
+export function fmtNumber(val) {
+  if (val === null || val === undefined || val === "") return "—";
+  const num = Number(val);
+  if (Number.isNaN(num)) return "—";
+  return num.toLocaleString("en-US", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 4,
+  });
+}
+
 export function fmtCost(val, fallback = "نامشخص") {
   if (val === null || val === undefined || val === "") return fallback;
   const num = Number(val);
   if (Number.isNaN(num)) return fallback;
-  return num.toLocaleString("en-US", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 4,
-  });
+  return `${fmtNumber(num)} ریال`;
+}
+
+export function fmtToman(val, fallback = "نامشخص") {
+  if (val === null || val === undefined || val === "") return fallback;
+  const num = Number(val);
+  if (Number.isNaN(num)) return fallback;
+  return `${fmtNumber(num / 10)} تومان`;
+}
+
+export function fmtPriceInline(val, fallback = "نامشخص") {
+  if (val === null || val === undefined || val === "") return fallback;
+  const num = Number(val);
+  if (Number.isNaN(num)) return fallback;
+  return `${fmtNumber(num)} ریال (${fmtNumber(num / 10)} تومان)`;
+}
+
+export function fmtPriceHtml(val, fallback = "نامشخص") {
+  if (val === null || val === undefined || val === "") {
+    return `<span class="text-muted">${escapeHtml(fallback)}</span>`;
+  }
+  const num = Number(val);
+  if (Number.isNaN(num)) {
+    return `<span class="text-muted">${escapeHtml(fallback)}</span>`;
+  }
+  return `<span class="price-display num"><span class="price-rial">${fmtNumber(num)} ریال</span><span class="price-toman">${fmtNumber(num / 10)} تومان</span></span>`;
+}
+
+export function rialToTomanDisplay(rawVal) {
+  if (rawVal === null || rawVal === undefined || String(rawVal).trim() === "") {
+    return "";
+  }
+  const num = Number(rawVal);
+  if (Number.isNaN(num) || num < 0) {
+    return "مبلغ نامعتبر";
+  }
+  return `معادل: ${fmtNumber(num / 10)} تومان`;
 }
 
 export function fmtDate(iso) {
@@ -267,9 +310,9 @@ export async function openItemDetailModal(itemId) {
         <td>${txTypeBadge(t.transaction_type)}</td>
         <td class="text-right num"><strong>${fmtQty(t.quantity)}</strong></td>
         <td class="text-right num ltr">${fmtQty(t.stock_before)} → <strong>${fmtQty(t.stock_after)}</strong></td>
-        <td class="text-right num">${fmtCost(t.price, "—")}</td>
-        <td class="text-right num">${fmtCost(t.unit_cost_snapshot, "نامشخص")}</td>
-        <td class="text-right num">${fmtCost(t.transaction_cost_snapshot, "نامشخص")}</td>
+        <td class="text-right num">${fmtPriceHtml(t.price, "—")}</td>
+        <td class="text-right num">${fmtPriceHtml(t.unit_cost_snapshot, "نامشخص")}</td>
+        <td class="text-right num">${fmtPriceHtml(t.transaction_cost_snapshot, "نامشخص")}</td>
         <td>${escapeHtml(t.user_name)}</td>
         <td class="text-secondary">${escapeHtml(t.description || "—")}</td>
       </tr>
@@ -285,16 +328,16 @@ export async function openItemDetailModal(itemId) {
           <div class="spec-val num" style="font-size:1.15rem;">${fmtQty(item.quantity)}</div>
         </div>
         <div class="spec-item">
-          <div class="spec-label">میانگین موزون (WAC)</div>
-          <div class="spec-val num">${fmtCost(item.weighted_avg_cost, "نامشخص")}</div>
+          <div class="spec-label">قیمت میانگین</div>
+          <div class="spec-val num">${fmtPriceHtml(item.weighted_avg_cost, "نامشخص")}</div>
         </div>
         <div class="spec-item">
           <div class="spec-label">آخرین قیمت خرید</div>
-          <div class="spec-val num">${fmtCost(item.last_purchase_cost, "نامشخص")}</div>
+          <div class="spec-val num">${fmtPriceHtml(item.last_purchase_cost, "نامشخص")}</div>
         </div>
         <div class="spec-item">
-          <div class="spec-label">ارزش کل (بر مبنای WAC)</div>
-          <div class="spec-val num">${fmtCost(item.total_wac_value, "نامشخص")}</div>
+          <div class="spec-label">ارزش کل (بر مبنای قیمت میانگین)</div>
+          <div class="spec-val num">${fmtPriceHtml(item.total_wac_value, "نامشخص")}</div>
         </div>
         <div class="spec-item">
           <div class="spec-label">دسته‌بندی</div>

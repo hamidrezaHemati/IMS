@@ -380,8 +380,14 @@ def _auto_fit_columns(ws) -> None:
         ws.column_dimensions[col_letter].width = min(max(max_len + 4, 12), 42)
 
 
+def _to_toman(val) -> float | None:
+    if val is None:
+        return None
+    return float(Decimal(str(val)) / Decimal("10"))
+
+
 def export_bom_report_xlsx(analysis: dict) -> bytes:
-    """Generate a multi-sheet BOM Cost & Availability Excel report."""
+    """Generate a multi-sheet BOM Cost & Availability Excel report (Rial and Toman)."""
     wb = Workbook()
 
     # Sheet 1: BOM Cost Calculation
@@ -391,10 +397,14 @@ def export_bom_report_xlsx(analysis: dict) -> bytes:
         "Item Code",
         "Item Name / Model",
         "Required Qty",
-        "Weighted Avg Unit Cost",
-        "Weighted Avg Line Total",
-        "Last Purchase Unit Cost",
-        "Last Purchase Line Total",
+        "Weighted Avg Unit Cost (Rial)",
+        "Weighted Avg Unit Cost (Toman)",
+        "Weighted Avg Line Total (Rial)",
+        "Weighted Avg Line Total (Toman)",
+        "Last Purchase Unit Cost (Rial)",
+        "Last Purchase Unit Cost (Toman)",
+        "Last Purchase Line Total (Rial)",
+        "Last Purchase Line Total (Toman)",
         "Cost Status",
     ]
     ws_cost.append(cost_headers)
@@ -406,7 +416,7 @@ def export_bom_report_xlsx(analysis: dict) -> bytes:
         elif row["wac_missing"] or row["lpc_missing"]:
             missing_parts = []
             if row["wac_missing"]:
-                missing_parts.append("WAC missing")
+                missing_parts.append("Average cost missing")
             if row["lpc_missing"]:
                 missing_parts.append("Last Purchase missing")
             status_note = ", ".join(missing_parts)
@@ -418,21 +428,34 @@ def export_bom_report_xlsx(analysis: dict) -> bytes:
             row["item_name"],
             row["required_qty"],
             float(row["weighted_avg_cost"]) if row["weighted_avg_cost"] is not None else "Unavailable",
+            _to_toman(row["weighted_avg_cost"]) if row["weighted_avg_cost"] is not None else "Unavailable",
             float(row["wac_line_total"]) if row["wac_line_total"] is not None else "Unavailable",
+            _to_toman(row["wac_line_total"]) if row["wac_line_total"] is not None else "Unavailable",
             float(row["last_purchase_cost"]) if row["last_purchase_cost"] is not None else "Unavailable",
+            _to_toman(row["last_purchase_cost"]) if row["last_purchase_cost"] is not None else "Unavailable",
             float(row["lpc_line_total"]) if row["lpc_line_total"] is not None else "Unavailable",
+            _to_toman(row["lpc_line_total"]) if row["lpc_line_total"] is not None else "Unavailable",
             status_note,
         ])
 
     cs = analysis["cost_summary"]
     ws_cost.append([])
+    wac_toman_total = Decimal(str(cs["wac_total"])) / Decimal("10") if cs["wac_total"] is not None else None
+    wac_toman_known = Decimal(str(cs["wac_known_subtotal"])) / Decimal("10")
+    lpc_toman_total = Decimal(str(cs["lpc_total"])) / Decimal("10") if cs["lpc_total"] is not None else None
+    lpc_toman_known = Decimal(str(cs["lpc_known_subtotal"])) / Decimal("10")
     ws_cost.append([
         "TOTAL (Weighted Average Cost)",
         "",
         "",
         "",
+        "",
         float(cs["wac_total"]) if cs["wac_complete"] and cs["wac_total"] is not None
-        else f"INCOMPLETE (known subtotal: {cs['wac_known_subtotal']}, missing: {cs['wac_missing_count']})",
+        else f"INCOMPLETE (known subtotal: {cs['wac_known_subtotal']} Rial, missing: {cs['wac_missing_count']})",
+        float(wac_toman_total) if cs["wac_complete"] and wac_toman_total is not None
+        else f"INCOMPLETE (known subtotal: {float(wac_toman_known)} Toman, missing: {cs['wac_missing_count']})",
+        "",
+        "",
         "",
         "",
         "Complete" if cs["wac_complete"] else "Incomplete",
@@ -444,8 +467,13 @@ def export_bom_report_xlsx(analysis: dict) -> bytes:
         "",
         "",
         "",
+        "",
+        "",
+        "",
         float(cs["lpc_total"]) if cs["lpc_complete"] and cs["lpc_total"] is not None
-        else f"INCOMPLETE (known subtotal: {cs['lpc_known_subtotal']}, missing: {cs['lpc_missing_count']})",
+        else f"INCOMPLETE (known subtotal: {cs['lpc_known_subtotal']} Rial, missing: {cs['lpc_missing_count']})",
+        float(lpc_toman_total) if cs["lpc_complete"] and lpc_toman_total is not None
+        else f"INCOMPLETE (known subtotal: {float(lpc_toman_known)} Toman, missing: {cs['lpc_missing_count']})",
         "Complete" if cs["lpc_complete"] else "Incomplete",
     ])
     _auto_fit_columns(ws_cost)

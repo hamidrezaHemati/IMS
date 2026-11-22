@@ -3,9 +3,9 @@
 from flask import Blueprint, jsonify, request, session
 import psycopg2
 from ims.auth import (
+    admin_required,
     authenticate_user,
     get_current_user,
-    is_user_admin,
     login_required,
     prepare_password,
     verify_password,
@@ -81,9 +81,8 @@ def list_users():
 
 
 @bp.post("/users")
-@login_required
+@admin_required
 def create_user():
-    current_user = get_current_user()
     data = request.get_json(silent=True) or {}
     first_name = clean_text(data.get("first_name"), max_len=100)
     last_name = clean_text(data.get("last_name"), max_len=100)
@@ -111,13 +110,6 @@ def create_user():
             role_row = cur.fetchone()
             if not role_row:
                 raise AppError("Selected role does not exist.", status_code=404)
-
-            if role_row["name"].lower() == "admin" and not is_user_admin(current_user):
-                raise AppError(
-                    "Admin access is required to assign the admin role.",
-                    status_code=403,
-                    code="forbidden",
-                )
 
             cur.execute(
                 """
