@@ -1,15 +1,25 @@
-"""Items and inventory search, filtering, and CRUD service."""
+"""Items, category-specific specifications, filtering, and CRUD service."""
 
 import math
 import psycopg2
 from ims.db import AppError, get_db, translate_pg_error
+from ims.item_specs import (
+    SPEC_DEFINITIONS,
+    build_display_name,
+    build_spec_summary,
+    get_spec_definition,
+    resolve_spec_type,
+    validate_specs,
+)
 from ims.jalali import format_jalali_datetime
 from ims.utils import (
     clean_text,
     normalize_mounting_type,
+    normalize_persian_text,
     parse_bool_param,
     parse_nonnegative_int,
     parse_optional_int,
+    parse_optional_mm,
     parse_optional_price,
 )
 
@@ -46,9 +56,93 @@ WITH RECURSIVE cat_info AS (
 )
 """
 
+ITEM_SPECS_JOIN_SQL = """
+LEFT JOIN electronic_item ei ON ei.item_id = i.id
+LEFT JOIN spacer sp ON sp.item_id = i.id
+LEFT JOIN screw sc ON sc.item_id = i.id
+LEFT JOIN nut nu ON nu.item_id = i.id
+LEFT JOIN washer wa ON wa.item_id = i.id
+LEFT JOIN o_ring ori ON ori.item_id = i.id
+"""
+
+ITEM_SPECS_SELECT_SQL = """
+    ei.item_id AS ei_present,
+    ei.model AS ei_model,
+    ei.package_size AS ei_package_size,
+    ei.mounting_type AS ei_mounting_type,
+    ei.voltage AS ei_voltage,
+    ei.material AS ei_material,
+    sp.item_id AS sp_present,
+    sp.diameter AS sp_diameter,
+    sp.length AS sp_length,
+    sp.material AS sp_material,
+    sp.spacer_type AS sp_spacer_type,
+    sc.item_id AS sc_present,
+    sc.diameter AS sc_diameter,
+    sc.length AS sc_length,
+    sc.material AS sc_material,
+    sc.head_type AS sc_head_type,
+    sc.drive_type AS sc_drive_type,
+    nu.item_id AS nu_present,
+    nu.diameter AS nu_diameter,
+    nu.material AS nu_material,
+    wa.item_id AS wa_present,
+    wa.diameter AS wa_diameter,
+    wa.washer_type AS wa_washer_type,
+    wa.material AS wa_material,
+    ori.item_id AS ori_present,
+    ori.inner_diameter AS ori_inner_diameter,
+    ori.outer_diameter AS ori_outer_diameter,
+    ori.cross_section AS ori_cross_section,
+    ori.material AS ori_material
+"""
+
+ITEM_TYPE_CASE_SQL = """
+CASE
+    WHEN ei.item_id IS NOT NULL THEN 'electronic_item'
+    WHEN sp.item_id IS NOT NULL THEN 'spacer'
+    WHEN sc.item_id IS NOT NULL THEN 'screw'
+    WHEN nu.item_id IS NOT NULL THEN 'nut'
+    WHEN wa.item_id IS NOT NULL THEN 'washer'
+    WHEN ori.item_id IS NOT NULL THEN 'o_ring'
+    ELSE NULL
+END
+"""
+
+_SPEC_PREFIX_AND_FIELDS = {
+    "electronic_item": ("ei_", ("model", "package_size", "mounting_type", "voltage", "material")),
+    "spacer": ("sp_", ("diameter", "length", "material", "spacer_type")),
+    "screw": ("sc_", ("diameter", "length", "material", "head_type", "drive_type")),
+    "nut": ("nu_", ("diameter", "material")),
+    "washer": ("wa_", ("diameter", "washer_type", "material")),
+    "o_ring": ("ori_", ("inner_diameter", "outer_diameter", "cross_section", "material")),
+}
+
+_SPEC_WRITE_COLUMNS = {
+    "electronic_item": ("model", "package_size", "mounting_type", "voltage", "material"),
+    "spacer": ("diameter", "length", "material", "spacer_type"),
+    "screw": ("diameter", "length", "material", "head_type", "drive_type"),
+    "nut": ("diameter", "material"),
+    "washer": ("diameter", "washer_type", "material"),
+    "o_ring": ("inner_diameter", "outer_diameter", "material"),
+}
+
+_RAW_SPEC_COLS = tuple(
+    f"{prefix}{key}"
+    for prefix, keys in (
+        ("ei_", ("present", "model", "package_size", "mounting_type", "voltage", "material")),
+        ("sp_", ("present", "diameter", "length", "material", "spacer_type")),
+        ("sc_", ("present", "diameter", "length", "material", "head_type", "drive_type")),
+        ("nu_", ("present", "diameter", "material")),
+        ("wa_", ("present", "diameter", "washer_type", "material")),
+        ("ori_", ("present", "inner_diameter", "outer_diameter", "cross_section", "material")),
+    )
+    for key in keys
+)
+
 _SORT_EXPRESSIONS = {
     "item_code": "LOWER(i.item_code)",
-    "model": "LOWER(i.model)",
+    "model": "LOWER(COALESCE(ei.model, ''))",
     "category": "LOWER(ci.category_path)",
     "location": "LOWER(i.location)",
     "quantity": "inv.quantity",
@@ -58,50 +152,157 @@ _SORT_EXPRESSIONS = {
     "updated_at": "inv.updated_at",
 }
 
+_ALL_MATERIAL_ENUMS = {
+    "STAINLESS_STEEL": "STAINLESS_STEEL",
+    "STAINLESS STEEL": "STAINLESS_STEEL",
+    "PLASTIC": "PLASTIC",
+    "BLACK": "BLACK",
+    "WHITE": "WHITE",
+    "IRON": "IRON",
+    "PAPER": "PAPER",
+    "NBR": "NBR",
+    "VITON": "VITON",
+    "SILICONE": "SILICONE",
+}
+
+
+def hydrate_spec_fields(row: dict) -> dict:
+    """Attach unified item_type, specs, display_name, and spec_summary onto a SQL row."""
+    item_type = None
+    for candidate, (prefix, _) in _SPEC_PREFIX_AND_FIELDS.items():
+        if row.get(f"{prefix}present") is not None:
+            item_type = candidate
+            break
+
+    if item_type is None:
+        item_type = resolve_spec_type(
+            row.get("category_name"),
+            row.get("subcategory_name"),
+            is_leaf=row.get("subcategory_name") is not None,
+        )
+
+    specs: dict = {}
+    if item_type and item_type in _SPEC_PREFIX_AND_FIELDS:
+        prefix, keys = _SPEC_PREFIX_AND_FIELDS[item_type]
+        for key in keys:
+            specs[key] = row.get(f"{prefix}{key}")
+
+    for raw_col in _RAW_SPEC_COLS:
+        row.pop(raw_col, None)
+
+    defn = SPEC_DEFINITIONS.get(item_type) if item_type else None
+    row["item_type"] = item_type
+    row["item_type_label_fa"] = defn["label_fa"] if defn else "نامشخص"
+    row["item_type_label_en"] = defn["label_en"] if defn else "Unknown"
+    row["specs"] = specs
+    row["spec_summary"] = build_spec_summary(item_type, specs)
+    row["display_name"] = build_display_name(
+        item_type,
+        specs,
+        row.get("subcategory_name"),
+        row.get("item_code", ""),
+    )
+    return row
+
+
+def _trim_num_sql(expr: str) -> str:
+    return f"COALESCE(TRIM(TRAILING '.' FROM TRIM(TRAILING '0' FROM {expr}::TEXT)), '')"
+
+
+def _add_mm_range_clauses(
+    clauses: list[str],
+    params: list,
+    expr: str,
+    filters: dict,
+    field: str,
+    label: str,
+) -> None:
+    exact_val = parse_optional_mm(filters.get(field), label)
+    if exact_val is not None:
+        clauses.append(f"{expr} = %s")
+        params.append(exact_val)
+
+    min_val = parse_optional_mm(filters.get(f"min_{field}"), f"min_{label}", require_positive=False)
+    if min_val is not None:
+        clauses.append(f"{expr} >= %s")
+        params.append(min_val)
+
+    max_val = parse_optional_mm(filters.get(f"max_{field}"), f"max_{label}", require_positive=False)
+    if max_val is not None:
+        clauses.append(f"{expr} <= %s")
+        params.append(max_val)
+
 
 def build_inventory_filter_sql(filters: dict) -> tuple[str, list]:
     """Build parameterized WHERE conditions shared by item search and Excel export."""
-    clauses = []
+    clauses: list[str] = []
     params: list = []
 
     search = clean_text(filters.get("search"))
     if search:
-        like = f"%{search}%"
-        clauses.append(
-            """(
-                i.item_code ILIKE %s
-                OR COALESCE(i.model, '') ILIKE %s
-                OR COALESCE(i.size, '') ILIKE %s
-                OR COALESCE(i.material, '') ILIKE %s
-                OR COALESCE(i.voltage, '') ILIKE %s
-                OR i.location ILIKE %s
-                OR COALESCE(i.description, '') ILIKE %s
-                OR ci.category_name ILIKE %s
-                OR COALESCE(ci.subcategory_name, '') ILIKE %s
-            )"""
-        )
-        params.extend([like] * 9)
+        norm_search = normalize_persian_text(search) or search
+        like = f"%{norm_search}%"
+        search_exprs = [
+            "i.item_code ILIKE %s",
+            "i.location ILIKE %s",
+            "COALESCE(i.description, '') ILIKE %s",
+            "ci.category_name ILIKE %s",
+            "COALESCE(ci.subcategory_name, '') ILIKE %s",
+            "COALESCE(ei.model, '') ILIKE %s",
+            "COALESCE(ei.package_size, '') ILIKE %s",
+            "COALESCE(ei.mounting_type, '') ILIKE %s",
+            "COALESCE(ei.voltage, '') ILIKE %s",
+            "COALESCE(ei.material, '') ILIKE %s",
+            "COALESCE(sp.material, '') ILIKE %s",
+            "COALESCE(sp.spacer_type, '') ILIKE %s",
+            "COALESCE(sc.material, '') ILIKE %s",
+            "COALESCE(sc.head_type, '') ILIKE %s",
+            "COALESCE(sc.drive_type, '') ILIKE %s",
+            "COALESCE(nu.material, '') ILIKE %s",
+            "COALESCE(wa.washer_type, '') ILIKE %s",
+            "COALESCE(wa.material, '') ILIKE %s",
+            "COALESCE(ori.material, '') ILIKE %s",
+            f"{_trim_num_sql('sp.diameter')} ILIKE %s",
+            f"{_trim_num_sql('sp.length')} ILIKE %s",
+            f"{_trim_num_sql('sc.diameter')} ILIKE %s",
+            f"{_trim_num_sql('sc.length')} ILIKE %s",
+            f"{_trim_num_sql('nu.diameter')} ILIKE %s",
+            f"{_trim_num_sql('wa.diameter')} ILIKE %s",
+            f"{_trim_num_sql('ori.inner_diameter')} ILIKE %s",
+            f"{_trim_num_sql('ori.outer_diameter')} ILIKE %s",
+            f"{_trim_num_sql('ori.cross_section')} ILIKE %s",
+        ]
+        clauses.append("(" + " OR ".join(search_exprs) + ")")
+        params.extend([like] * len(search_exprs))
 
-    text_ilike_fields = (
+    for key, expr in (
         ("item_code", "i.item_code"),
-        ("model", "COALESCE(i.model, '')"),
-        ("size", "COALESCE(i.size, '')"),
-        ("material", "COALESCE(i.material, '')"),
-        ("voltage", "COALESCE(i.voltage, '')"),
         ("location", "i.location"),
         ("description", "COALESCE(i.description, '')"),
-    )
-    for key, expr in text_ilike_fields:
+        ("model", "COALESCE(ei.model, '')"),
+        ("voltage", "COALESCE(ei.voltage, '')"),
+        ("electronic_material", "COALESCE(ei.material, '')"),
+    ):
         val = clean_text(filters.get(key))
         if val:
             clauses.append(f"{expr} ILIKE %s")
             params.append(f"%{val}%")
 
+    pkg_val = clean_text(filters.get("package_size")) or clean_text(filters.get("size"))
+    if pkg_val:
+        clauses.append("COALESCE(ei.package_size, '') ILIKE %s")
+        params.append(f"%{pkg_val}%")
+
     mounting_raw = clean_text(filters.get("mounting_type"))
     if mounting_raw:
-        mounting = normalize_mounting_type(mounting_raw)
-        clauses.append("i.mounting_type = %s")
-        params.append(mounting)
+        clauses.append("ei.mounting_type = %s")
+        params.append(normalize_mounting_type(mounting_raw))
+
+    item_type_raw = clean_text(filters.get("item_type"))
+    if item_type_raw:
+        get_spec_definition(item_type_raw)
+        clauses.append(f"({ITEM_TYPE_CASE_SQL}) = %s")
+        params.append(item_type_raw)
 
     parent_cat_id = parse_optional_int(filters.get("parent_category_id"), "parent_category_id")
     if parent_cat_id is not None:
@@ -131,46 +332,100 @@ def build_inventory_filter_sql(filters: dict) -> tuple[str, list]:
         )
         params.append(cat_id)
 
+    # Mechanical dimension numeric exact & range filters (mm)
+    _add_mm_range_clauses(
+        clauses, params,
+        "COALESCE(sp.diameter, sc.diameter, nu.diameter, wa.diameter)",
+        filters, "diameter", "diameter",
+    )
+    _add_mm_range_clauses(
+        clauses, params,
+        "COALESCE(sp.length, sc.length)",
+        filters, "length", "length",
+    )
+    _add_mm_range_clauses(
+        clauses, params,
+        "ori.inner_diameter",
+        filters, "inner_diameter", "inner_diameter",
+    )
+    _add_mm_range_clauses(
+        clauses, params,
+        "ori.outer_diameter",
+        filters, "outer_diameter", "outer_diameter",
+    )
+    _add_mm_range_clauses(
+        clauses, params,
+        "ori.cross_section",
+        filters, "cross_section", "cross_section",
+    )
+
+    # Mechanical enum filters
+    spacer_type_raw = clean_text(filters.get("spacer_type"))
+    if spacer_type_raw:
+        clauses.append("sp.spacer_type = %s")
+        params.append(spacer_type_raw.upper())
+
+    head_type_raw = normalize_persian_text(clean_text(filters.get("head_type")))
+    if head_type_raw:
+        clauses.append("sc.head_type = %s")
+        params.append(head_type_raw)
+
+    drive_type_raw = normalize_persian_text(clean_text(filters.get("drive_type")))
+    if drive_type_raw:
+        clauses.append("sc.drive_type = %s")
+        params.append(drive_type_raw)
+
+    washer_type_raw = clean_text(filters.get("washer_type"))
+    if washer_type_raw:
+        clauses.append("wa.washer_type = %s")
+        params.append(washer_type_raw.upper())
+
+    material_raw = clean_text(filters.get("material"))
+    if material_raw:
+        mat_enum = _ALL_MATERIAL_ENUMS.get(material_raw.upper())
+        if item_type_raw == "electronic_item":
+            clauses.append("COALESCE(ei.material, '') ILIKE %s")
+            params.append(f"%{material_raw}%")
+        elif item_type_raw in ("spacer", "screw", "nut", "washer", "o_ring"):
+            tbl_alias = {"spacer": "sp", "screw": "sc", "nut": "nu", "washer": "wa", "o_ring": "ori"}[item_type_raw]
+            clauses.append(f"{tbl_alias}.material = %s")
+            params.append(mat_enum or material_raw.upper())
+        else:
+            mech_val = mat_enum or material_raw.upper()
+            clauses.append(
+                "(COALESCE(ei.material, '') ILIKE %s OR sp.material = %s OR sc.material = %s OR nu.material = %s OR wa.material = %s OR ori.material = %s)"
+            )
+            params.extend([f"%{material_raw}%", mech_val, mech_val, mech_val, mech_val, mech_val])
+
+    # Shared inventory stock & cost filters
     min_qty_raw = clean_text(filters.get("min_quantity"))
     if min_qty_raw is not None:
-        min_qty = parse_nonnegative_int(min_qty_raw, "min_quantity")
         clauses.append("inv.quantity >= %s")
-        params.append(min_qty)
+        params.append(parse_nonnegative_int(min_qty_raw, "min_quantity"))
 
     max_qty_raw = clean_text(filters.get("max_quantity"))
     if max_qty_raw is not None:
-        max_qty = parse_nonnegative_int(max_qty_raw, "max_quantity")
         clauses.append("inv.quantity <= %s")
-        params.append(max_qty)
+        params.append(parse_nonnegative_int(max_qty_raw, "max_quantity"))
 
     if parse_bool_param(filters.get("zero_stock")):
         clauses.append("inv.quantity = 0")
 
     below_raw = clean_text(filters.get("below_threshold"))
     if below_raw is not None:
-        below_val = parse_nonnegative_int(below_raw, "below_threshold")
         clauses.append("inv.quantity < %s")
-        params.append(below_val)
+        params.append(parse_nonnegative_int(below_raw, "below_threshold"))
 
-    min_wac = parse_optional_price(filters.get("min_wac"), "min_wac")
-    if min_wac is not None:
-        clauses.append("inv.weighted_avg_cost >= %s")
-        params.append(min_wac)
-
-    max_wac = parse_optional_price(filters.get("max_wac"), "max_wac")
-    if max_wac is not None:
-        clauses.append("inv.weighted_avg_cost <= %s")
-        params.append(max_wac)
-
-    min_lpc = parse_optional_price(filters.get("min_lpc"), "min_lpc")
-    if min_lpc is not None:
-        clauses.append("inv.last_purchase_cost >= %s")
-        params.append(min_lpc)
-
-    max_lpc = parse_optional_price(filters.get("max_lpc"), "max_lpc")
-    if max_lpc is not None:
-        clauses.append("inv.last_purchase_cost <= %s")
-        params.append(max_lpc)
+    for key, expr in (
+        ("min_wac", "inv.weighted_avg_cost >="),
+        ("max_wac", "inv.weighted_avg_cost <="),
+        ("min_lpc", "inv.last_purchase_cost >="),
+        ("max_lpc", "inv.last_purchase_cost <="),
+    ):
+        val = parse_optional_price(filters.get(key), key)
+        if val is not None:
+            clauses.append(f"{expr} %s")
+            params.append(val)
 
     where_sql = f"WHERE {' AND '.join(clauses)}" if clauses else ""
     return where_sql, params
@@ -181,12 +436,16 @@ def _build_order_sql(filters: dict) -> str:
     sort_expr = _SORT_EXPRESSIONS.get(sort_by, _SORT_EXPRESSIONS["item_code"])
     sort_dir = (filters.get("sort_dir") or "asc").strip().lower()
     direction = "DESC" if sort_dir == "desc" else "ASC"
-    nulls_clause = "NULLS LAST" if sort_by in ("model", "weighted_avg_cost", "last_purchase_cost") else ""
+    nulls_clause = (
+        "NULLS LAST"
+        if sort_by in ("model", "weighted_avg_cost", "last_purchase_cost")
+        else ""
+    )
     return f"ORDER BY {sort_expr} {direction} {nulls_clause}, i.id ASC"
 
 
 def list_items(filters: dict, paginate: bool = True) -> dict:
-    """Query items joined with inventory and category path, with optional pagination."""
+    """Query items joined with all specification tables, inventory, and category path."""
     where_sql, params = build_inventory_filter_sql(filters)
     order_sql = _build_order_sql(filters)
 
@@ -203,6 +462,7 @@ def list_items(filters: dict, paginate: bool = True) -> dict:
               FROM item i
               JOIN inventory inv ON inv.item_id = i.id
               JOIN cat_info ci ON ci.id = i.category_id
+              {ITEM_SPECS_JOIN_SQL}
             {where_sql};
         """
         cur.execute(count_sql, tuple(params))
@@ -221,11 +481,6 @@ def list_items(filters: dict, paginate: bool = True) -> dict:
                 ci.category_name,
                 ci.subcategory_name,
                 ci.category_path,
-                i.model,
-                i.size,
-                i.mounting_type,
-                i.voltage,
-                i.material,
                 i.location,
                 i.description,
                 i.created_at,
@@ -242,10 +497,12 @@ def list_items(filters: dict, paginate: bool = True) -> dict:
                     WHEN inv.last_purchase_cost IS NOT NULL
                     THEN ROUND(inv.quantity::NUMERIC * inv.last_purchase_cost, 4)
                     ELSE NULL
-                END AS total_lpc_value
+                END AS total_lpc_value,
+                {ITEM_SPECS_SELECT_SQL}
             FROM item i
             JOIN inventory inv ON inv.item_id = i.id
             JOIN cat_info ci ON ci.id = i.category_id
+            {ITEM_SPECS_JOIN_SQL}
             {where_sql}
             {order_sql}
             {limit_sql};
@@ -253,7 +510,7 @@ def list_items(filters: dict, paginate: bool = True) -> dict:
         cur.execute(data_sql, tuple(query_params))
         rows = []
         for r in cur.fetchall():
-            item_dict = dict(r)
+            item_dict = hydrate_spec_fields(dict(r))
             item_dict["created_at_jalali"] = format_jalali_datetime(item_dict.get("created_at"))
             item_dict["inventory_updated_at_jalali"] = format_jalali_datetime(
                 item_dict.get("inventory_updated_at")
@@ -271,7 +528,7 @@ def list_items(filters: dict, paginate: bool = True) -> dict:
 
 
 def get_item_detail(item_id: int, tx_limit: int = 50) -> dict:
-    """Return full item specifications, live inventory state, and recent transactions."""
+    """Return full item info, category-specific specs, inventory state, and transactions."""
     db = get_db()
     with db.cursor() as cur:
         cur.execute(
@@ -285,11 +542,6 @@ def get_item_detail(item_id: int, tx_limit: int = 50) -> dict:
                 ci.category_name,
                 ci.subcategory_name,
                 ci.category_path,
-                i.model,
-                i.size,
-                i.mounting_type,
-                i.voltage,
-                i.material,
                 i.location,
                 i.description,
                 i.created_at,
@@ -306,10 +558,12 @@ def get_item_detail(item_id: int, tx_limit: int = 50) -> dict:
                     WHEN inv.last_purchase_cost IS NOT NULL
                     THEN ROUND(inv.quantity::NUMERIC * inv.last_purchase_cost, 4)
                     ELSE NULL
-                END AS total_lpc_value
+                END AS total_lpc_value,
+                {ITEM_SPECS_SELECT_SQL}
             FROM item i
             JOIN inventory inv ON inv.item_id = i.id
             JOIN cat_info ci ON ci.id = i.category_id
+            {ITEM_SPECS_JOIN_SQL}
             WHERE i.id = %s;
             """,
             (item_id,),
@@ -347,7 +601,7 @@ def get_item_detail(item_id: int, tx_limit: int = 50) -> dict:
         )
         transactions = [dict(r) for r in cur.fetchall()]
 
-    result = dict(item_row)
+    result = hydrate_spec_fields(dict(item_row))
     result["created_at_jalali"] = format_jalali_datetime(result.get("created_at"))
     result["inventory_updated_at_jalali"] = format_jalali_datetime(
         result.get("inventory_updated_at")
@@ -356,8 +610,76 @@ def get_item_detail(item_id: int, tx_limit: int = 50) -> dict:
     return result
 
 
-def validate_item_payload(data: dict) -> dict:
-    """Validate and normalize item specification fields."""
+def resolve_category_spec_for_write(cur, category_id: int) -> str:
+    """Validate that category_id is an existing leaf category mapped to a spec table."""
+    cur.execute(
+        f"""
+        {CAT_INFO_CTE}
+        SELECT
+            ci.id,
+            ci.root_name,
+            ci.leaf_name,
+            ci.parent_id,
+            EXISTS (SELECT 1 FROM category ch WHERE ch.parent_id = ci.id) AS has_children
+          FROM cat_info ci
+         WHERE ci.id = %s;
+        """,
+        (category_id,),
+    )
+    row = cur.fetchone()
+    if not row:
+        raise AppError("Selected category does not exist.", status_code=404)
+
+    is_leaf = bool(row["parent_id"] is not None and not row["has_children"])
+    spec_type = resolve_spec_type(row["root_name"], row["leaf_name"], is_leaf=is_leaf)
+    if not spec_type:
+        raise AppError(
+            "Items must belong to a valid leaf component category (Electronic or Mechanical subcategory)."
+        )
+    return spec_type
+
+
+def upsert_spec_row(cur, spec_type: str, item_id: int, specs: dict) -> None:
+    """Insert or update the single matching 1:1 specification row for item_id."""
+    cols = _SPEC_WRITE_COLUMNS[spec_type]
+    all_cols = ("item_id",) + cols
+    placeholders = ", ".join(["%s"] * len(all_cols))
+    updates = ", ".join(f"{c} = EXCLUDED.{c}" for c in cols)
+    values = [item_id] + [specs.get(c) for c in cols]
+    cur.execute(
+        f"""
+        INSERT INTO {spec_type} ({", ".join(all_cols)})
+        VALUES ({placeholders})
+        ON CONFLICT (item_id) DO UPDATE
+           SET {updates};
+        """,
+        tuple(values),
+    )
+
+
+def delete_spec_row(cur, spec_type: str, item_id: int) -> None:
+    """Remove the specification row for item_id from spec_type table."""
+    if spec_type in _SPEC_WRITE_COLUMNS:
+        cur.execute(f"DELETE FROM {spec_type} WHERE item_id = %s;", (item_id,))
+
+
+def _extract_raw_specs_from_payload(data: dict) -> dict:
+    merged: dict = {}
+    nested = data.get("specs")
+    if isinstance(nested, dict):
+        merged.update(nested)
+    spec_keys = {
+        "model", "package_size", "size", "mounting_type", "voltage", "material",
+        "diameter", "length", "spacer_type", "head_type", "drive_type",
+        "washer_type", "inner_diameter", "outer_diameter",
+    }
+    for key in spec_keys:
+        if key in data and key not in merged:
+            merged[key] = data[key]
+    return merged
+
+
+def _validate_general_item_fields(data: dict) -> dict:
     item_code = clean_text(data.get("item_code"), max_len=80)
     if not item_code:
         raise AppError("Item code is required.")
@@ -366,8 +688,6 @@ def validate_item_payload(data: dict) -> dict:
     if category_id is None:
         raise AppError("Category is required.")
 
-    model = clean_text(data.get("model"), max_len=150)
-
     location = clean_text(data.get("location"), max_len=150)
     if not location:
         raise AppError("Storage location is required.")
@@ -375,49 +695,37 @@ def validate_item_payload(data: dict) -> dict:
     return {
         "item_code": item_code,
         "category_id": category_id,
-        "model": model,
-        "size": clean_text(data.get("size"), max_len=50),
-        "mounting_type": normalize_mounting_type(data.get("mounting_type")),
-        "voltage": clean_text(data.get("voltage"), max_len=80),
-        "material": clean_text(data.get("material"), max_len=100),
         "location": location,
         "description": clean_text(data.get("description")),
     }
 
 
 def create_item(data: dict) -> dict:
-    """Create a new item record; PostgreSQL trigger initializes its inventory row."""
-    fields = validate_item_payload(data)
+    """Create a new item record and its matching specification row inside one transaction."""
+    general = _validate_general_item_fields(data)
+    raw_specs = _extract_raw_specs_from_payload(data)
 
     db = get_db()
     try:
         with db.transaction() as cur:
-            cur.execute("SELECT id FROM category WHERE id = %s;", (fields["category_id"],))
-            if not cur.fetchone():
-                raise AppError("Selected category does not exist.", status_code=404)
+            spec_type = resolve_category_spec_for_write(cur, general["category_id"])
+            clean_specs = validate_specs(spec_type, raw_specs)
 
             cur.execute(
                 """
-                INSERT INTO item (
-                    item_code, category_id, model, size, mounting_type,
-                    voltage, material, location, description
-                )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                INSERT INTO item (item_code, category_id, location, description)
+                VALUES (%s, %s, %s, %s)
                 RETURNING id;
                 """,
                 (
-                    fields["item_code"],
-                    fields["category_id"],
-                    fields["model"],
-                    fields["size"],
-                    fields["mounting_type"],
-                    fields["voltage"],
-                    fields["material"],
-                    fields["location"],
-                    fields["description"],
+                    general["item_code"],
+                    general["category_id"],
+                    general["location"],
+                    general["description"],
                 ),
             )
             item_id = cur.fetchone()["id"]
+            upsert_spec_row(cur, spec_type, item_id, clean_specs)
     except psycopg2.Error as exc:
         raise translate_pg_error(exc) from exc
 
@@ -425,47 +733,56 @@ def create_item(data: dict) -> dict:
 
 
 def update_item(item_id: int, data: dict) -> dict:
-    """Update item specifications only (never modifies inventory quantities or costs)."""
-    fields = validate_item_payload(data)
+    """Update item general info and specifications safely across category changes."""
+    general = _validate_general_item_fields(data)
+    raw_specs = _extract_raw_specs_from_payload(data)
 
     db = get_db()
     try:
         with db.transaction() as cur:
-            cur.execute("SELECT id FROM item WHERE id = %s;", (item_id,))
-            if not cur.fetchone():
+            cur.execute(
+                """
+                SELECT
+                    i.id,
+                    i.category_id,
+                    fn_resolve_category_spec_type(i.category_id) AS old_spec_type
+                  FROM item i
+                 WHERE i.id = %s
+                   FOR UPDATE;
+                """,
+                (item_id,),
+            )
+            existing = cur.fetchone()
+            if not existing:
                 raise AppError("Item not found.", status_code=404)
 
-            cur.execute("SELECT id FROM category WHERE id = %s;", (fields["category_id"],))
-            if not cur.fetchone():
-                raise AppError("Selected category does not exist.", status_code=404)
+            old_spec_type = existing["old_spec_type"]
+            new_spec_type = resolve_category_spec_for_write(cur, general["category_id"])
+            clean_specs = validate_specs(new_spec_type, raw_specs)
+
+            if old_spec_type and old_spec_type != new_spec_type:
+                # Delete incompatible spec row BEFORE updating item.category_id
+                # so database consistency triggers never observe cross-type state.
+                delete_spec_row(cur, old_spec_type, item_id)
 
             cur.execute(
                 """
                 UPDATE item
                    SET item_code = %s,
                        category_id = %s,
-                       model = %s,
-                       size = %s,
-                       mounting_type = %s,
-                       voltage = %s,
-                       material = %s,
                        location = %s,
                        description = %s
                  WHERE id = %s;
                 """,
                 (
-                    fields["item_code"],
-                    fields["category_id"],
-                    fields["model"],
-                    fields["size"],
-                    fields["mounting_type"],
-                    fields["voltage"],
-                    fields["material"],
-                    fields["location"],
-                    fields["description"],
+                    general["item_code"],
+                    general["category_id"],
+                    general["location"],
+                    general["description"],
                     item_id,
                 ),
             )
+            upsert_spec_row(cur, new_spec_type, item_id, clean_specs)
     except psycopg2.Error as exc:
         raise translate_pg_error(exc) from exc
 
@@ -480,15 +797,15 @@ def get_filter_options() -> dict:
             """
             SELECT
                 ARRAY(
-                    SELECT DISTINCT mounting_type FROM item
+                    SELECT DISTINCT mounting_type FROM electronic_item
                      WHERE mounting_type IS NOT NULL ORDER BY mounting_type
                 ) AS mounting_types,
                 ARRAY(
-                    SELECT DISTINCT material FROM item
+                    SELECT DISTINCT material FROM electronic_item
                      WHERE material IS NOT NULL ORDER BY material
-                ) AS materials,
+                ) AS electronic_materials,
                 ARRAY(
-                    SELECT DISTINCT voltage FROM item
+                    SELECT DISTINCT voltage FROM electronic_item
                      WHERE voltage IS NOT NULL ORDER BY voltage
                 ) AS voltages,
                 ARRAY(
@@ -496,16 +813,16 @@ def get_filter_options() -> dict:
                      WHERE location IS NOT NULL ORDER BY location
                 ) AS locations,
                 ARRAY(
-                    SELECT DISTINCT size FROM item
-                     WHERE size IS NOT NULL ORDER BY size
-                ) AS sizes;
+                    SELECT DISTINCT package_size FROM electronic_item
+                     WHERE package_size IS NOT NULL ORDER BY package_size
+                ) AS package_sizes;
             """
         )
         row = cur.fetchone()
     return dict(row) if row else {
         "mounting_types": [],
-        "materials": [],
+        "electronic_materials": [],
         "voltages": [],
         "locations": [],
-        "sizes": [],
+        "package_sizes": [],
     }

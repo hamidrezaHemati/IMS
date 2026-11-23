@@ -7,7 +7,12 @@ from pathlib import Path
 from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Alignment, Font, PatternFill
 from ims.db import AppError, get_db
-from ims.services.item_service import CAT_INFO_CTE
+from ims.services.item_service import (
+    CAT_INFO_CTE,
+    ITEM_SPECS_JOIN_SQL,
+    ITEM_SPECS_SELECT_SQL,
+    hydrate_spec_fields,
+)
 from ims.utils import clean_text, parse_positive_int, resolve_uploaded_xlsx
 
 
@@ -179,24 +184,26 @@ def calculate_bom(
                 SELECT
                     i.id,
                     i.item_code,
-                    i.model,
-                    i.size,
-                    i.mounting_type,
                     i.location,
                     ci.category_name,
                     ci.subcategory_name,
                     ci.category_path,
                     inv.quantity AS available_qty,
                     inv.weighted_avg_cost,
-                    inv.last_purchase_cost
+                    inv.last_purchase_cost,
+                    {ITEM_SPECS_SELECT_SQL}
                 FROM item i
                 JOIN inventory inv ON inv.item_id = i.id
                 JOIN cat_info ci ON ci.id = i.category_id
+                {ITEM_SPECS_JOIN_SQL}
                 WHERE i.item_code = ANY(%s);
                 """,
                 (order_codes,),
             )
-            db_items = {r["item_code"]: dict(r) for r in cur.fetchall()}
+            db_items = {
+                r["item_code"]: hydrate_spec_fields(dict(r))
+                for r in cur.fetchall()
+            }
 
     availability_report = []
     cost_report = []
@@ -226,7 +233,10 @@ def calculate_bom(
                 "item_id": None,
                 "item_code": code,
                 "bom_item_name": bom_line["bom_item_name"],
-                "model": None,
+                "item_type": None,
+                "item_type_label_fa": "ناشناخته",
+                "display_name": bom_line["bom_item_name"] or "Unknown Component",
+                "spec_summary": "—",
                 "category_name": None,
                 "subcategory_name": None,
                 "location": None,
@@ -270,7 +280,11 @@ def calculate_bom(
             "item_id": db_row["id"],
             "item_code": code,
             "bom_item_name": bom_line["bom_item_name"],
-            "model": db_row["model"],
+            "item_type": db_row["item_type"],
+            "item_type_label_fa": db_row["item_type_label_fa"],
+            "display_name": db_row["display_name"],
+            "spec_summary": db_row["spec_summary"],
+            "specs": db_row["specs"],
             "category_name": db_row["category_name"],
             "subcategory_name": db_row["subcategory_name"],
             "location": db_row["location"],
@@ -306,12 +320,12 @@ def calculate_bom(
             lpc_missing = True
             lpc_missing_count += 1
 
-        db_model = db_row["model"]
+        base_name = db_row["display_name"]
         bom_name = bom_line["bom_item_name"]
-        if db_model and bom_name and bom_name != db_model:
-            display_name = f"{db_model} ({bom_name})"
+        if bom_name and bom_name != base_name:
+            display_name = f"{base_name} ({bom_name})"
         else:
-            display_name = db_model or bom_name or code
+            display_name = base_name
 
         cost_report.append({
             "item_id": db_row["id"],
@@ -485,7 +499,8 @@ def export_bom_report_xlsx(analysis: dict) -> bytes:
     ws_avail = wb.create_sheet("Inventory Availability")
     avail_headers = [
         "Item Code",
-        "Model",
+        "Item Type",
+        "Specifications",
         "Category",
         "Subcategory",
         "Location",
@@ -501,7 +516,8 @@ def export_bom_report_xlsx(analysis: dict) -> bytes:
     for row in analysis["availability_report"]:
         ws_avail.append([
             row["item_code"],
-            row["model"] or row["bom_item_name"] or "",
+            row.get("item_type") or "",
+            row.get("spec_summary") if row.get("spec_summary") and row.get("spec_summary") != "—" else (row.get("display_name") or row.get("bom_item_name") or ""),
             row["category_name"] or "",
             row["subcategory_name"] or "",
             row["location"] or "",

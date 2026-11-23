@@ -1,12 +1,14 @@
-"""Filtered Inventory and Movement History Excel export service."""
+"""Single-sheet and multi-sheet Excel export service for multi-table inventory & transactions."""
 
 from decimal import Decimal
 from io import BytesIO
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill
+from ims.item_specs import SPEC_DEFINITIONS, SPEC_TYPES_ORDER
 from ims.jalali import format_jalali_datetime
 from ims.services.item_service import list_items
 from ims.services.transaction_service import list_transactions
+from ims.utils import clean_text
 
 
 def _style_header(ws, row_idx: int, col_count: int) -> None:
@@ -36,24 +38,16 @@ def _auto_fit(ws) -> None:
         ws.column_dimensions[col_letter].width = min(max(max_len + 4, 12), 44)
 
 
-def export_inventory_xlsx(filters: dict) -> bytes:
-    """Generate a styled Excel export matching the requested inventory filters."""
-    result = list_items(filters, paginate=False)
-    items = result["items"]
-
-    wb = Workbook()
-    ws = wb.active
-    ws.title = "Inventory Report"
+def _populate_inventory_worksheet(ws, spec_type: str | None, items: list[dict]) -> None:
+    """Populate a single inventory worksheet tailored to spec_type's columns."""
+    spec_fields = SPEC_DEFINITIONS[spec_type]["fields"] if spec_type in SPEC_DEFINITIONS else []
+    spec_headers = [f["excel_header"] for f in spec_fields]
 
     headers = [
         "Item Code",
         "Category",
         "Subcategory",
-        "Model",
-        "Size",
-        "Mounting Type",
-        "Material",
-        "Voltage",
+        *spec_headers,
         "Location",
         "Current Quantity",
         "Weighted Avg Cost (Rial)",
@@ -69,6 +63,18 @@ def export_inventory_xlsx(filters: dict) -> bytes:
     ]
     ws.append(headers)
     _style_header(ws, 1, len(headers))
+
+    spec_offset = 3  # Item Code, Category, Subcategory
+    loc_col = spec_offset + len(spec_fields) + 1
+    qty_col = loc_col + 1
+    cost_start_col = qty_col + 1
+    cost_end_col = qty_col + 8  # inclusive (8 Rial/Toman columns)
+
+    mm_col_indices = [
+        spec_offset + idx + 1
+        for idx, f in enumerate(spec_fields)
+        if f["kind"] in ("mm", "computed_mm")
+    ]
 
     total_qty = 0
     wac_subtotal = Decimal("0.0000")
@@ -95,15 +101,20 @@ def export_inventory_xlsx(filters: dict) -> bytes:
         elif val_lpc is not None:
             lpc_subtotal += Decimal(val_lpc)
 
+        specs = item.get("specs") or {}
+        spec_cells = []
+        for f in spec_fields:
+            raw_v = specs.get(f["name"])
+            if f["kind"] in ("mm", "computed_mm"):
+                spec_cells.append(float(raw_v) if raw_v is not None else None)
+            else:
+                spec_cells.append(raw_v if raw_v is not None else "")
+
         ws.append([
             item["item_code"],
             item["category_name"] or "",
             item["subcategory_name"] or "",
-            item["model"] or "",
-            item["size"] or "",
-            item["mounting_type"] or "",
-            item["material"] or "",
-            item["voltage"] or "",
+            *spec_cells,
             item["location"],
             qty,
             float(wac) if wac is not None else None,
@@ -120,8 +131,12 @@ def export_inventory_xlsx(filters: dict) -> bytes:
         ])
 
     for r_idx in range(2, len(items) + 2):
-        ws.cell(row=r_idx, column=10).number_format = "#,##0"
-        for c_idx in range(11, 19):
+        for mm_col in mm_col_indices:
+            mm_cell = ws.cell(row=r_idx, column=mm_col)
+            if mm_cell.value is not None:
+                mm_cell.number_format = "#,##0.###"
+        ws.cell(row=r_idx, column=qty_col).number_format = "#,##0"
+        for c_idx in range(cost_start_col, cost_end_col + 1):
             cell = ws.cell(row=r_idx, column=c_idx)
             if cell.value is not None:
                 cell.number_format = "#,##0.0000"
@@ -130,15 +145,12 @@ def export_inventory_xlsx(filters: dict) -> bytes:
     summary_row = ws.max_row + 1
     wac_toman_sub = wac_subtotal / Decimal("10")
     lpc_toman_sub = lpc_subtotal / Decimal("10")
+
     ws.append([
         f"TOTAL ({len(items)} items)",
         "",
         "",
-        "",
-        "",
-        "",
-        "",
-        "",
+        *([""] * len(spec_fields)),
         "",
         total_qty,
         "",
@@ -150,20 +162,64 @@ def export_inventory_xlsx(filters: dict) -> bytes:
         float(lpc_subtotal) if lpc_missing == 0 else f"INCOMPLETE ({lpc_subtotal}; {lpc_missing} missing)",
         float(lpc_toman_sub) if lpc_missing == 0 else f"INCOMPLETE ({lpc_toman_sub}; {lpc_missing} missing)",
         "",
-        "Unit: Rial (IRR) & Toman (Rial / 10)",
+        "Unit: Rial (IRR) & Toman (Rial / 10)" + (" | Mechanical dims in mm" if mm_col_indices else ""),
     ])
     for c_idx in range(1, len(headers) + 1):
         ws.cell(row=summary_row, column=c_idx).font = Font(bold=True)
-    ws.cell(row=summary_row, column=10).number_format = "#,##0"
+    ws.cell(row=summary_row, column=qty_col).number_format = "#,##0"
     if wac_missing == 0:
-        ws.cell(row=summary_row, column=15).number_format = "#,##0.0000"
-        ws.cell(row=summary_row, column=16).number_format = "#,##0.0000"
+        ws.cell(row=summary_row, column=qty_col + 5).number_format = "#,##0.0000"
+        ws.cell(row=summary_row, column=qty_col + 6).number_format = "#,##0.0000"
     if lpc_missing == 0:
-        ws.cell(row=summary_row, column=17).number_format = "#,##0.0000"
-        ws.cell(row=summary_row, column=18).number_format = "#,##0.0000"
+        ws.cell(row=summary_row, column=qty_col + 7).number_format = "#,##0.0000"
+        ws.cell(row=summary_row, column=qty_col + 8).number_format = "#,##0.0000"
 
     ws.freeze_panes = "A2"
     _auto_fit(ws)
+
+
+def export_inventory_xlsx(filters: dict) -> bytes:
+    """Generate a single-sheet (1 type) or multi-sheet (multiple types) inventory workbook."""
+    result = list_items(filters, paginate=False)
+    items = result["items"]
+
+    grouped: dict[str, list[dict]] = {t: [] for t in SPEC_TYPES_ORDER}
+    extra_items: list[dict] = []
+    for item in items:
+        t = item.get("item_type")
+        if t in grouped:
+            grouped[t].append(item)
+        else:
+            extra_items.append(item)
+
+    active_types = [t for t in SPEC_TYPES_ORDER if grouped[t]]
+
+    wb = Workbook()
+    if not active_types and not extra_items:
+        ws = wb.active
+        req_type = clean_text(filters.get("item_type"))
+        if req_type in SPEC_DEFINITIONS:
+            ws.title = SPEC_DEFINITIONS[req_type]["sheet_name"]
+            _populate_inventory_worksheet(ws, req_type, [])
+        else:
+            ws.title = "Inventory Report"
+            _populate_inventory_worksheet(ws, None, [])
+    else:
+        first_sheet_used = False
+        for t in active_types:
+            sheet_title = SPEC_DEFINITIONS[t]["sheet_name"]
+            if not first_sheet_used:
+                ws = wb.active
+                ws.title = sheet_title
+                first_sheet_used = True
+            else:
+                ws = wb.create_sheet(sheet_title)
+            _populate_inventory_worksheet(ws, t, grouped[t])
+
+        if extra_items:
+            ws = wb.active if not first_sheet_used else wb.create_sheet("Other Items")
+            ws.title = "Other Items"
+            _populate_inventory_worksheet(ws, None, extra_items)
 
     buf = BytesIO()
     wb.save(buf)
@@ -185,9 +241,10 @@ def export_transactions_xlsx(filters: dict) -> bytes:
         "Timestamp (Jalali)",
         "Type",
         "Item Code",
+        "Item Type",
         "Category",
         "Subcategory",
-        "Model",
+        "Specifications",
         "User",
         "Quantity",
         "Stock Before",
@@ -210,9 +267,10 @@ def export_transactions_xlsx(filters: dict) -> bytes:
             created_str,
             tx["transaction_type"],
             tx["item_code"],
+            tx.get("item_type_label_en") or "",
             tx["category_name"] or "",
             tx["subcategory_name"] or "",
-            tx["model"] or "",
+            tx.get("spec_summary") or tx.get("display_name") or "",
             tx["user_name"],
             int(tx["quantity"]),
             int(tx["stock_before"]),
@@ -227,9 +285,9 @@ def export_transactions_xlsx(filters: dict) -> bytes:
         ])
 
     for r_idx in range(2, len(rows) + 2):
-        for c_idx in (9, 10, 11):
+        for c_idx in (10, 11, 12):
             ws.cell(row=r_idx, column=c_idx).number_format = "#,##0"
-        for c_idx in range(12, 18):
+        for c_idx in range(13, 19):
             cell = ws.cell(row=r_idx, column=c_idx)
             if cell.value is not None:
                 cell.number_format = "#,##0.0000"

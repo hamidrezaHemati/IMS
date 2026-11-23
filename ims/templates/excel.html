@@ -5,46 +5,49 @@
 {% block content %}
 <div class="page-header">
   <div>
-    <h1 class="page-title">ورود اکسل انبار</h1>
-    <p class="page-subtitle">ایجاد دسته‌بندی‌ها، قطعات و موجودی اولیه از فایل اکسل از طریق تراکنش OPENING (مخصوص مدیر سیستم)</p>
+    <h1 class="page-title">ورود اکسل انبار (بر اساس نوع قطعه)</h1>
+    <p class="page-subtitle">هر نوع قطعه فایل اکسل، ستون‌های فنی و فایل نمونه مستقل دارد؛ ورود موجودی اولیه از طریق تراکنش OPENING ثبت می‌شود (مخصوص مدیر سیستم)</p>
   </div>
   <span class="badge badge-warning">دسترسی ویژه مدیر سیستم (ادمین)</span>
 </div>
 
-<section class="card" style="margin-bottom:18px;">
+<div class="alert alert-info" style="margin-bottom:16px;font-size:0.86rem;">
+  <strong>راهنما:</strong> متناسب با نوع قطعه (الکترونیک، پیچ، مهره، اسپیسر، واشر یا اورینگ)، فایل اکسل را در بخش مربوط به همان نوع بارگذاری کنید. پس از بارگذاری می‌توانید <strong>تطبیق ستون‌های فایل اکسل</strong> را به صورت دستی تعیین یا اصلاح کنید. قیمت‌ها بر حسب <strong>ریال</strong> و تمام ابعاد قطعات مکانیکی به شکل عدد خالص بر حسب <strong>میلی‌متر (mm)</strong> هستند.
+</div>
+
+<!-- ۶ بخش مجزا برای ورود اکسل هر نوع قطعه -->
+<section id="imp-cards-grid" class="import-type-grid">
+  <div class="card"><div class="card-body empty-state">در حال بارگذاری انواع قطعات...</div></div>
+</section>
+
+<!-- پنل تنظیمات و تطبیق ستون‌های فایل انتخاب‌شده -->
+<section id="imp-config-panel" class="card hidden" style="margin-bottom:18px;">
   <div class="card-header">
-    <h2 class="card-title">مرحله ۱: بارگذاری فایل اکسل موجودی اولیه (.xlsx)</h2>
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+      <h2 class="card-title">تنظیمات و تطبیق ستون‌های اکسل: <span id="imp-active-type-label">—</span></h2>
+      <span id="imp-active-file-badge" class="badge badge-neutral"></span>
+    </div>
   </div>
   <div class="card-body">
-    <div id="imp-dropzone" class="dropzone">
-      <input id="imp-file-input" type="file" accept=".xlsx" class="hidden">
-      <p style="font-weight:700;">فایل اکسل موجودی اولیه (.xlsx) را اینجا رها کنید یا کلیک کنید</p>
-      <p class="text-muted" style="font-size:0.84rem;margin-top:4px;">
-        سیستم ابتدا ستون‌های category و sub_category را بررسی و جدول دسته‌بندی‌ها را تکمیل می‌کند، سپس اقلام و تراکنش‌های OPENING را ثبت می‌نماید. توجه: قیمت‌های ورودی در فایل اکسل بر حسب ریال در نظر گرفته می‌شوند.
-      </p>
+    <div class="form-grid" style="margin-bottom:14px;">
+      <div class="field">
+        <label for="imp-sheet">کاربرگ (Sheet)</label>
+        <select id="imp-sheet" class="select"></select>
+      </div>
+      <div class="field" style="grid-column:span 2;">
+        <label for="imp-policy">سیاست برخورد با کدهای قطعه تکراری / موجود در سیستم</label>
+        <select id="imp-policy" class="select">
+          <option value="skip">نادیده گرفتن اقلام موجود در سیستم (حالت پیش‌فرض امن — بدون تغییر موجودی)</option>
+          <option value="update_metadata">به‌روزرسانی فقط مشخصات فنی هم‌نوع (بدون تغییر موجودی یا تراکنش‌ها)</option>
+        </select>
+      </div>
     </div>
 
-    <div id="imp-config-panel" class="hidden" style="margin-top:18px;">
-      <div class="form-grid" style="margin-bottom:14px;">
-        <div class="field">
-          <label for="imp-sheet">کاربرگ (Sheet)</label>
-          <select id="imp-sheet" class="select"></select>
-        </div>
-        <div class="field" style="grid-column:span 2;">
-          <label for="imp-policy">سیاست برخورد با کدهای قطعه تکراری / موجود در سیستم</label>
-          <select id="imp-policy" class="select">
-            <option value="skip">نادیده گرفتن اقلام موجود در سیستم (حالت پیش‌فرض امن — بدون تغییر موجودی)</option>
-            <option value="update_metadata">به‌روزرسانی فقط مشخصات فنی قطعه (بدون تغییر موجودی یا تراکنش‌ها)</option>
-          </select>
-        </div>
-      </div>
+    <h3 style="font-size:0.95rem;margin-bottom:10px;">تطبیق ستون‌های فایل اکسل</h3>
+    <div id="imp-mapping-grid" class="form-grid"></div>
 
-      <h3 style="font-size:0.95rem;margin-bottom:10px;">تطبیق ستون‌های فایل اکسل</h3>
-      <div id="imp-mapping-grid" class="form-grid"></div>
-
-      <div style="display:flex;gap:10px;margin-top:16px;flex-wrap:wrap;">
-        <button type="button" id="imp-preview-btn" class="btn btn-primary">پیش‌نمایش و اعتبارسنجی داده‌ها</button>
-      </div>
+    <div style="display:flex;gap:10px;margin-top:16px;flex-wrap:wrap;">
+      <button type="button" id="imp-preview-btn" class="btn btn-primary">پیش‌نمایش و اعتبارسنجی داده‌ها</button>
     </div>
   </div>
 </section>
@@ -58,7 +61,7 @@
   <!-- پیش‌نمایش دسته‌بندی‌ها -->
   <section class="card" style="margin-bottom:18px;">
     <div class="card-header">
-      <h2 class="card-title">پیش‌نمایش ایجاد دسته‌بندی‌ها و زیردسته‌ها</h2>
+      <h2 class="card-title">پیش‌نمایش ایجاد یا استفاده از دسته‌بندی‌ها و زیردسته‌ها</h2>
     </div>
     <div id="imp-cat-plan" class="card-body"></div>
   </section>
@@ -83,8 +86,7 @@
             <th>وضعیت</th>
             <th>کد قطعه</th>
             <th>دسته‌بندی / زیردسته</th>
-            <th>مدل</th>
-            <th>نصب / سایز</th>
+            <th>مشخصات فنی استخراج‌شده</th>
             <th>محل نگهداری</th>
             <th class="text-right">تعداد</th>
             <th class="text-right">قیمت (ریال / تومان)</th>
@@ -113,7 +115,7 @@
           <tr>
             <th>ردیف</th>
             <th>کد قطعه</th>
-            <th>مدل</th>
+            <th>نوع و مشخصات فنی</th>
             <th>نتیجه</th>
             <th class="text-right">تعداد</th>
             <th class="text-right">قیمت (ریال / تومان)</th>

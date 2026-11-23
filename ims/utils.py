@@ -2,6 +2,7 @@
 
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from pathlib import Path
+import re
 import time
 import uuid
 from werkzeug.utils import secure_filename
@@ -9,6 +10,63 @@ from ims.db import AppError
 
 
 ALLOWED_MOUNTING_TYPES = ("SMD", "DIP")
+_MM_DIGITS = str.maketrans("۰۱۲۳۴۵۶۷۸۹٠١٢٣٤٥٦٧٨٩", "01234567890123456789")
+_PERSIAN_CHARS = str.maketrans({"ي": "ی", "ك": "ک", "\u200c": " "})
+
+
+def normalize_persian_text(value: str | None) -> str | None:
+    """Normalize Arabic Yeh/Kaf, ZWNJ, and whitespace for uniform Farsi matching."""
+    if value is None:
+        return None
+    normalized = str(value).translate(_PERSIAN_CHARS)
+    collapsed = re.sub(r"\s+", " ", normalized).strip()
+    return collapsed or None
+
+
+def parse_positive_mm(value, field_name: str = "dimension") -> Decimal:
+    """Parse a strictly positive NUMERIC(10,3) millimeter measurement."""
+    parsed = parse_optional_mm(value, field_name=field_name, require_positive=True)
+    if parsed is None:
+        raise AppError(f"{field_name} (mm) is required and must be greater than zero.")
+    return parsed
+
+
+def parse_optional_mm(
+    value,
+    field_name: str = "dimension",
+    *,
+    require_positive: bool = True,
+) -> Decimal | None:
+    """Parse an optional NUMERIC(10,3) millimeter value, rejecting non-numeric strings like 'M5'."""
+    if value is None or isinstance(value, bool):
+        if isinstance(value, bool):
+            raise AppError(f"{field_name} (mm) must be a valid number.")
+        return None
+    if isinstance(value, float) and value != value:
+        return None
+
+    text = str(value).translate(_MM_DIGITS).strip()
+    if not text:
+        return None
+
+    try:
+        dec = value if isinstance(value, Decimal) else Decimal(text)
+    except InvalidOperation as exc:
+        raise AppError(
+            f"{field_name} (mm) must be a valid numeric value in millimeters."
+        ) from exc
+
+    if not dec.is_finite():
+        raise AppError(f"{field_name} (mm) must be a finite numeric value.")
+    if require_positive and dec <= 0:
+        raise AppError(f"{field_name} (mm) must be greater than zero.")
+    if not require_positive and dec < 0:
+        raise AppError(f"{field_name} (mm) cannot be negative.")
+
+    quantized = dec.quantize(Decimal("0.001"), rounding=ROUND_HALF_UP)
+    if require_positive and quantized <= 0:
+        raise AppError(f"{field_name} (mm) must be greater than zero.")
+    return quantized
 
 
 def clean_text(value, max_len: int | None = None) -> str | None:

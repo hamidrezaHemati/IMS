@@ -2,9 +2,16 @@
 
 from flask import Blueprint, jsonify, request
 from ims.auth import login_required
+from ims.item_specs import get_public_schema
 from ims.services import item_service
 
 bp = Blueprint("api_items", __name__, url_prefix="/api/items")
+
+
+@bp.get("/spec-schema")
+@login_required
+def spec_schema():
+    return jsonify(get_public_schema())
 
 
 @bp.get("")

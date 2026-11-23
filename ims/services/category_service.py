@@ -2,6 +2,7 @@
 
 import psycopg2
 from ims.db import AppError, get_db, translate_pg_error
+from ims.item_specs import get_spec_definition, resolve_spec_type
 from ims.utils import clean_text, parse_optional_int
 
 
@@ -82,11 +83,22 @@ ORDER BY LOWER(ct.full_path), ct.id;
 
 
 def list_categories() -> list[dict]:
-    """Return all categories enriched with hierarchy metadata and item counts."""
+    """Return all categories enriched with hierarchy metadata, spec_type, and item counts."""
     db = get_db()
     with db.cursor() as cur:
         cur.execute(_CATEGORY_TREE_SQL)
-        return [dict(row) for row in cur.fetchall()]
+        rows = []
+        for raw in cur.fetchall():
+            row = dict(raw)
+            is_leaf = bool(row["parent_id"] is not None and row["child_count"] == 0)
+            row["is_leaf"] = is_leaf
+            row["spec_type"] = resolve_spec_type(
+                row.get("root_name"),
+                row.get("name"),
+                is_leaf=is_leaf,
+            )
+            rows.append(row)
+        return rows
 
 
 def get_category_tree() -> list[dict]:
@@ -123,6 +135,12 @@ def _ensure_parent_exists(cur, parent_id: int | None) -> None:
     cur.execute("SELECT id FROM category WHERE id = %s;", (parent_id,))
     if not cur.fetchone():
         raise AppError("Selected parent category does not exist.", status_code=404)
+    cur.execute("SELECT 1 FROM item WHERE category_id = %s LIMIT 1;", (parent_id,))
+    if cur.fetchone():
+        raise AppError(
+            "Cannot add a subcategory under a category that already has items assigned.",
+            status_code=409,
+        )
 
 
 def _check_duplicate_sibling(cur, name: str, parent_id: int | None, exclude_id: int | None = None) -> None:
@@ -304,3 +322,58 @@ def resolve_or_create_category_pair(
     sub_id = cur.fetchone()["id"]
     created_child = True
     return sub_id, created_parent, created_child
+
+
+def resolve_category_for_spec_type(
+    cur,
+    spec_type: str,
+    category_name: str | None = None,
+    sub_category_name: str | None = None,
+) -> tuple[int, bool, bool]:
+    """Resolve and validate a leaf category ID strictly compatible with spec_type."""
+    defn = get_spec_definition(spec_type)
+    clean_cat = clean_text(category_name, max_len=100)
+    clean_sub = clean_text(sub_category_name, max_len=100)
+
+    if spec_type == "electronic_item":
+        if clean_cat and clean_cat.strip().lower() in ("electronics", "electronic"):
+            clean_cat = "Electronic"
+
+        if clean_sub:
+            if clean_cat and clean_cat.strip().lower() != "electronic":
+                raise AppError(
+                    f"Electronic import requires root category 'Electronic' (found '{clean_cat}')."
+                )
+            resolved_sub = clean_sub
+        elif clean_cat and clean_cat.strip().lower() != "electronic":
+            if resolve_spec_type("Mechanical", clean_cat, is_leaf=True) is not None or clean_cat.strip().lower() == "mechanical":
+                raise AppError(
+                    f"Category '{clean_cat}' belongs to Mechanical components and cannot be imported as Electronic Items."
+                )
+            resolved_sub = clean_cat
+        else:
+            raise AppError(
+                "Electronic items require a sub_category (e.g. Resistor, Capacitor, Microcontroller)."
+            )
+
+        return resolve_or_create_category_pair(cur, "Electronic", resolved_sub)
+
+    expected_leaf = defn["default_subcategory"]
+    if clean_cat:
+        cat_key = clean_cat.strip().lower()
+        if cat_key == "electronic" or cat_key == "electronics":
+            raise AppError(
+                f"Category '{clean_cat}' belongs to Electronic components and cannot be imported as {defn['label_en']}."
+            )
+        if cat_key != "mechanical" and resolve_spec_type("Mechanical", clean_cat, is_leaf=True) != spec_type:
+            raise AppError(
+                f"Category '{clean_cat}' is incompatible with {defn['label_en']} import (expected Mechanical)."
+            )
+
+    if clean_sub:
+        if resolve_spec_type("Mechanical", clean_sub, is_leaf=True) != spec_type:
+            raise AppError(
+                f"Subcategory '{clean_sub}' is incompatible with {defn['label_en']} import (expected '{expected_leaf}')."
+            )
+
+    return resolve_or_create_category_pair(cur, "Mechanical", expected_leaf)

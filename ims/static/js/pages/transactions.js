@@ -1,4 +1,5 @@
 import { apiFetch, buildQuery, downloadExcel } from "../api.js";
+import { itemTypeBadge } from "../spec_ui.js";
 import {
   escapeHtml,
   fmtDate,
@@ -38,7 +39,7 @@ function renderTxDesktopRow(t) {
       <td class="text-muted ltr">${escapeHtml(fmtDate(t.created_at_jalali || t.created_at))}</td>
       <td>${txTypeBadge(t.transaction_type)}</td>
       <td class="mono"><strong>${escapeHtml(t.item_code)}</strong></td>
-      <td>${escapeHtml(t.model || "—")}</td>
+      <td>${t.item_type ? `${itemTypeBadge(t.item_type, t.item_type_label_fa)} ` : ""}${escapeHtml(t.spec_summary || t.display_name || "—")}</td>
       <td>${escapeHtml(t.user_name)}</td>
       <td class="text-right num"><strong>${fmtQty(t.quantity)}</strong></td>
       <td class="text-right num ltr">${fmtQty(t.stock_before)} → <strong>${fmtQty(t.stock_after)}</strong></td>
@@ -54,9 +55,12 @@ function renderTxMobileCard(t) {
     <div class="mobile-item-card" data-item-id="${t.item_id}">
       <div class="mobile-item-head">
         <div>
-          ${txTypeBadge(t.transaction_type)}
-          <strong class="mono">${escapeHtml(t.item_code)}</strong>
-          <div>${escapeHtml(t.model || "—")}</div>
+          <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+            ${txTypeBadge(t.transaction_type)}
+            ${t.item_type ? itemTypeBadge(t.item_type, t.item_type_label_fa) : ""}
+            <strong class="mono">${escapeHtml(t.item_code)}</strong>
+          </div>
+          <div style="font-size:0.84rem;margin-top:2px;">${escapeHtml(t.spec_summary || t.display_name || "—")}</div>
         </div>
         <div class="text-right num">
           <strong>${fmtQty(t.quantity)}</strong>

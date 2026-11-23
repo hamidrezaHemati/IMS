@@ -1,4 +1,5 @@
 import { apiFetch, downloadExcel } from "../api.js";
+import { itemTypeBadge } from "../spec_ui.js";
 import { escapeHtml, fmtPriceHtml, fmtPriceInline, fmtQty, stockBadge, toast } from "../ui.js";
 
 let currentUploadId = null;
@@ -112,7 +113,7 @@ function renderAvailabilityTable() {
       (r) => `
     <tr>
       <td class="mono"><strong>${escapeHtml(r.item_code)}</strong>${r.merged_rows > 1 ? ` <span class="badge badge-neutral">×${r.merged_rows}</span>` : ""}</td>
-      <td>${escapeHtml(r.model || r.bom_item_name || "—")}</td>
+      <td>${r.item_type ? `${itemTypeBadge(r.item_type, r.item_type_label_fa)} ` : ""}${escapeHtml(r.spec_summary || r.display_name || r.bom_item_name || "—")}</td>
       <td>${escapeHtml(r.category_name ? (r.subcategory_name ? `${r.category_name} > ${r.subcategory_name}` : r.category_name) : "—")}</td>
       <td>${escapeHtml(r.location || "—")}</td>
       <td class="text-right num"><strong>${fmtQty(r.required_qty)}</strong></td>

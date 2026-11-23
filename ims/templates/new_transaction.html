@@ -30,10 +30,16 @@
       <div class="form-grid" style="margin-bottom:10px;">
         <div class="field">
           <label for="t-search">فیلتر کلی</label>
-          <input id="t-search" class="input" type="search" placeholder="کد قطعه، مدل، کشو، سایز...">
+          <input id="t-search" class="input" type="search" placeholder="کد، مدل، ابعاد (mm)، کشو...">
         </div>
         <div class="field">
-          <label for="t-parent-cat">دسته‌بندی</label>
+          <label for="t-item-type">نوع قطعه</label>
+          <select id="t-item-type" class="select">
+            <option value="">همه انواع</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="t-parent-cat">دسته‌بندی اصلی</label>
           <select id="t-parent-cat" class="select"></select>
         </div>
         <div class="field">
@@ -43,10 +49,6 @@
         <div class="field">
           <label for="t-item-code">کد قطعه</label>
           <input id="t-item-code" class="input ltr" type="text">
-        </div>
-        <div class="field">
-          <label for="t-model">مدل / پارت نامبر / مقدار</label>
-          <input id="t-model" class="input" type="text">
         </div>
         <div class="field">
           <label for="t-location">محل نگهداری</label>
@@ -61,21 +63,12 @@
         </div>
       </div>
 
-      <!-- فیلترهای ثانویه -->
+      <!-- فیلترهای تخصصی پویا بر اساس نوع قطعه / دسته‌بندی -->
       <div id="tx-secondary-filters" class="hidden" style="margin-top:10px;padding-top:10px;border-top:1px dashed var(--border-color);">
-        <div class="form-grid">
-          <div class="field">
-            <label for="t-mounting">نوع نصب</label>
-            <select id="t-mounting" class="select">
-              <option value="">همه</option>
-              <option value="SMD">SMD</option>
-              <option value="DIP">DIP</option>
-            </select>
-          </div>
-          <div class="field"><label for="t-size">سایز / پکیج</label><input id="t-size" class="input" type="text" placeholder="مثلاً 603 یا 1206"></div>
-          <div class="field"><label for="t-voltage">ولتاژ</label><input id="t-voltage" class="input" type="text"></div>
-          <div class="field"><label for="t-material">متریال</label><input id="t-material" class="input" type="text"></div>
+        <div id="tx-spec-hint" class="alert alert-info" style="font-size:0.83rem;">
+          برای نمایش فیلترهای تخصصی هر نوع قطعه (مدل/ولتاژ الکترونیک یا ابعاد میلی‌متری پیچ، مهره، اسپیسر، واشر و اورینگ)، «نوع قطعه» یا «دسته‌بندی» را انتخاب کنید.
         </div>
+        <div id="tx-spec-filters" class="spec-filter-panel hidden"></div>
       </div>
 
       <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap;">
