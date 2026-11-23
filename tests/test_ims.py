@@ -664,20 +664,34 @@ class IMSEndToEndTestCase(unittest.TestCase):
             self.assertNotIn(moved_id, reports_html)
 
         tx_html = self.client.get("/transactions").get_data(as_text=True)
-        for moved_id in (
+        for must_have in (
+            "h-dl-all-btn",
             "h-match-count",
             "h-table-scroll",
             "scroll-table-10",
             "h-list-status",
-            "r-from",
-            "r-to",
+            "h-apply-btn",
+            "tx-export-btn",
+            "h-reset-btn",
+            "اعمال فیلتر و پیش‌نمایش",
+            "دانلود اکسل موارد منطبق",
+            "پاک کردن فیلترها",
+            "دانلود گزارش کامل تراکنش‌ها",
+        ):
+            self.assertIn(must_have, tx_html)
+        for removed in (
+            "h-pagination",
+            'id="r-from"',
+            'id="r-to"',
             "r-tx-tbody",
             "r-dl-tx",
             "extx-from",
             "ex-tx-dl-btn",
+            "بازه زمانی خلاصه گردش‌ها",
+            "خلاصه گردش‌ها بر اساس نوع تراکنش",
+            "خروجی اکسل پیشرفته گردش‌های انبار",
         ):
-            self.assertIn(moved_id, tx_html)
-        self.assertNotIn("h-pagination", tx_html)
+            self.assertNotIn(removed, tx_html)
 
         settings_html = self.client.get("/settings").get_data(as_text=True)
         self.assertIn("change-pw-form", settings_html)

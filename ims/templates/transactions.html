@@ -6,14 +6,24 @@
 <div class="page-header">
   <div>
     <h1 class="page-title">تاریخچه تراکنش‌های انبار</h1>
-    <p class="page-subtitle">دفتر کل تغییرناپذیر گردش‌های انبار؛ تمام محاسبات موجودی و هزینه توسط تریگرهای PostgreSQL ثبت شده‌اند</p>
+    <p class="page-subtitle">دفتر کل تغییرناپذیر گردش‌های انبار؛ فیلتر، پیش‌نمایش و دریافت خروجی اکسل کامل یا فیلترشده (قیمت‌ها و ارزش‌ها بر حسب ریال و معادل تومان)</p>
   </div>
   <div class="page-actions">
     <a class="btn btn-primary" href="{{ url_for('pages.new_transaction') }}">+ ثبت تراکنش جدید</a>
-    <button type="button" id="tx-export-btn" class="btn">خروجی اکسل</button>
   </div>
 </div>
 
+<section class="card" style="margin-bottom:20px;">
+  <div class="card-header">
+    <h2 class="card-title">خروجی سریع گردش‌های انبار (.xlsx)</h2>
+  </div>
+  <div class="card-body" style="display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;">
+    <p class="text-secondary" style="margin:0;">فایل اکسل کامل و به‌روز تمام تراکنش‌ها و گردش‌های انبار را مستقیماً از پایگاه داده PostgreSQL دریافت کنید.</p>
+    <button type="button" id="h-dl-all-btn" class="btn btn-primary">دانلود گزارش کامل تراکنش‌ها (.xlsx)</button>
+  </div>
+</section>
+
+<!-- فیلتر، پیش‌نمایش و خروجی اکسل گردش‌های کالا -->
 <section class="card">
   <div class="card-header">
     <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
@@ -56,9 +66,10 @@
           <input id="h-to" class="input ltr" type="date">
         </div>
       </div>
-      <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;">
-        <button type="button" id="h-apply-btn" class="btn btn-sm btn-primary">اعمال فیلتر</button>
-        <button type="button" id="h-reset-btn" class="btn btn-sm">پاک کردن</button>
+      <div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap;">
+        <button type="button" id="h-apply-btn" class="btn btn-sm btn-primary">اعمال فیلتر و پیش‌نمایش</button>
+        <button type="button" id="tx-export-btn" class="btn btn-sm btn-accent">دانلود اکسل موارد منطبق (.xlsx)</button>
+        <button type="button" id="h-reset-btn" class="btn btn-sm">پاک کردن فیلترها</button>
       </div>
     </div>
   </div>
@@ -92,83 +103,6 @@
     <span class="text-muted" style="font-size:0.78rem;">برای مشاهده سایر موارد، لیست را به پایین اسکرول کنید</span>
   </div>
 </section>
-
-<!-- خلاصه گردش‌ها و خروجی اکسل پیشرفته گردش‌های انبار -->
-<section class="card" style="margin-top:20px;margin-bottom:18px;">
-  <div class="card-header">
-    <h2 class="card-title">بازه زمانی خلاصه گردش‌ها</h2>
-  </div>
-  <div class="card-body">
-    <div class="form-grid" style="align-items:end;">
-      <div class="field">
-        <label for="r-from">از تاریخ</label>
-        <input id="r-from" class="input ltr" type="date">
-      </div>
-      <div class="field">
-        <label for="r-to">تا تاریخ</label>
-        <input id="r-to" class="input ltr" type="date">
-      </div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;">
-        <button type="button" id="r-apply-btn" class="btn btn-primary">به‌روزرسانی تحلیل</button>
-        <button type="button" id="r-reset-btn" class="btn">کل دوره</button>
-      </div>
-    </div>
-  </div>
-</section>
-
-<div class="grid grid-2">
-  <section class="card">
-    <div class="card-header">
-      <h2 class="card-title">خلاصه گردش‌ها بر اساس نوع تراکنش</h2>
-      <button type="button" id="r-dl-tx" class="btn btn-sm btn-accent">دانلود اکسل گردش‌های بازه انتخابی (.xlsx)</button>
-    </div>
-    <div class="table-wrap">
-      <table class="table">
-        <thead>
-          <tr>
-            <th>نوع تراکنش</th>
-            <th class="text-right">تعداد اسناد</th>
-            <th class="text-right">مجموع تعداد</th>
-            <th class="text-right">جمع ارزش شناخته‌شده (ریال / تومان)</th>
-            <th>تکمیل بودن قیمت</th>
-          </tr>
-        </thead>
-        <tbody id="r-tx-tbody">
-          <tr><td colspan="5" class="empty-state">در حال بارگذاری...</td></tr>
-        </tbody>
-      </table>
-    </div>
-  </section>
-
-  <section class="card">
-    <div class="card-header">
-      <h2 class="card-title">خروجی اکسل پیشرفته گردش‌های انبار (.xlsx)</h2>
-    </div>
-    <div class="card-body">
-      <div class="form-grid">
-        <div class="field"><label for="extx-from">از تاریخ</label><input id="extx-from" class="input ltr" type="date"></div>
-        <div class="field"><label for="extx-to">تا تاریخ</label><input id="extx-to" class="input ltr" type="date"></div>
-        <div class="field"><label for="extx-type">نوع تراکنش</label>
-          <select id="extx-type" class="select">
-            <option value="">همه انواع</option>
-            <option value="OPENING">موجودی اولیه (OPENING)</option>
-            <option value="PURCHASE_IN">خرید و ورود (PURCHASE_IN)</option>
-            <option value="OUT">خروج کالا (OUT)</option>
-            <option value="ADJUSTMENT_IN">تعدیل افزایشی (ADJUSTMENT_IN)</option>
-            <option value="ADJUSTMENT_OUT">تعدیل کاهشی (ADJUSTMENT_OUT)</option>
-          </select>
-        </div>
-        <div class="field"><label for="extx-user">کاربر</label>
-          <select id="extx-user" class="select"><option value="">همه کاربران</option></select>
-        </div>
-        <div class="field" style="grid-column:1 / -1;"><label for="extx-search">کد قطعه / مدل / توضیحات</label><input id="extx-search" class="input" type="text"></div>
-      </div>
-      <div style="display:flex;gap:8px;margin-top:16px;flex-wrap:wrap;">
-        <button type="button" id="ex-tx-dl-btn" class="btn btn-primary">دانلود گزارش اکسل گردش‌ها (.xlsx)</button>
-      </div>
-    </div>
-  </section>
-</div>
 {% endblock %}
 
 {% block scripts %}
