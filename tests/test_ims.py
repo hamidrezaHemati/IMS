@@ -703,6 +703,8 @@ class IMSEndToEndTestCase(unittest.TestCase):
             "پاک کردن فیلترها",
             "دانلود گزارش کامل تراکنش‌ها",
             "data-jalali-date",
+            'value="PURCHASE_IN,OUT,ADJUSTMENT_IN,ADJUSTMENT_OUT" selected',
+            "همه انواع به جز موجودی اولیه",
         ):
             self.assertIn(must_have, tx_html)
         for removed in (
@@ -736,6 +738,9 @@ class IMSEndToEndTestCase(unittest.TestCase):
             text = ui_file.read_text(encoding="utf-8")
             self.assertNotIn("میانگین موزون", text, f"Found deprecated term in {ui_file}")
             self.assertNotIn("میانگین موزود", text, f"Found deprecated term in {ui_file}")
+
+        self.assertIn("badge-stock-accent", (repo_root / "static" / "css" / "components.css").read_text(encoding="utf-8"))
+        self.assertIn("badge-stock-accent", (repo_root / "static" / "js" / "ui.js").read_text(encoding="utf-8"))
 
     def test_07_employee_rbac_restrictions(self):
         # Sign in as employee 'sara'
@@ -880,6 +885,15 @@ class IMSEndToEndTestCase(unittest.TestCase):
         )
         self.assertEqual(bom_resp.status_code, 200)
         self.assertEqual(bom_resp.get_json()["availability_summary"]["available"], 1)
+
+        # Default non-OPENING transaction type filter
+        non_open_resp = self.client.get(
+            "/api/transactions?transaction_type=PURCHASE_IN,OUT,ADJUSTMENT_IN,ADJUSTMENT_OUT"
+        )
+        self.assertEqual(non_open_resp.status_code, 200)
+        non_open_data = non_open_resp.get_json()
+        self.assertGreaterEqual(non_open_data["total"], 1)
+        self.assertTrue(all(t["transaction_type"] != "OPENING" for t in non_open_data["transactions"]))
 
 
 if __name__ == "__main__":

@@ -108,7 +108,7 @@ function renderCart() {
             <strong class="mono">${escapeHtml(item.item_code)}</strong>
             ${item.model ? `<span class="text-secondary"> — ${escapeHtml(item.model)}</span>` : ""}
             <div class="text-muted" style="font-size:0.78rem;">
-              موجودی: <strong class="num">${fmtQty(item.quantity)}</strong> • محل: ${escapeHtml(item.location)}
+              موجودی: ${stockBadge(item.quantity)} • محل: ${escapeHtml(item.location)}
             </div>
           </div>
           <button type="button" class="btn btn-sm btn-ghost" data-remove="${item.id}" aria-label="حذف">✕</button>
@@ -245,7 +245,7 @@ function openReviewModal() {
     .map(({ item, quantity, price }) => {
       const warn = outgoing && quantity > item.quantity
         ? `<span class="badge badge-danger">احتمال خطا: موجود ${fmtQty(item.quantity)}</span>`
-        : `<span class="badge badge-neutral">موجود: ${fmtQty(item.quantity)}</span>`;
+        : `<span class="badge badge-stock-accent num">موجود: ${fmtQty(item.quantity)}</span>`;
       const unitCostCell = outgoing
         ? fmtPriceHtml(item.weighted_avg_cost, "قیمت میانگین نامشخص")
         : fmtPriceHtml(price, "—");
@@ -352,7 +352,7 @@ function showResultsModal(res) {
         <td class="mono"><strong>${escapeHtml(r.item_code || r.item_id || "—")}</strong></td>
         <td>${escapeHtml(r.model || "—")}</td>
         <td class="text-right num">${fmtQty(r.requested_quantity)}</td>
-        <td class="text-right num">${r.available_quantity !== undefined && r.available_quantity !== null ? `موجود: ${fmtQty(r.available_quantity)}` : "—"}</td>
+        <td class="text-right num">${r.available_quantity !== undefined && r.available_quantity !== null ? `<span class="badge badge-stock-accent num">موجود: ${fmtQty(r.available_quantity)}</span>` : "—"}</td>
         <td class="text-right">—</td>
         <td class="text-danger">${escapeHtml(translateServerError(r.error))}</td>
       </tr>`;

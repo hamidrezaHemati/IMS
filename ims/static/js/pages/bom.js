@@ -1,5 +1,5 @@
 import { apiFetch, downloadExcel } from "../api.js";
-import { escapeHtml, fmtPriceHtml, fmtPriceInline, fmtQty, toast } from "../ui.js";
+import { escapeHtml, fmtPriceHtml, fmtPriceInline, fmtQty, stockBadge, toast } from "../ui.js";
 
 let currentUploadId = null;
 let lastAnalysis = null;
@@ -116,7 +116,7 @@ function renderAvailabilityTable() {
       <td>${escapeHtml(r.category_name ? (r.subcategory_name ? `${r.category_name} > ${r.subcategory_name}` : r.category_name) : "—")}</td>
       <td>${escapeHtml(r.location || "—")}</td>
       <td class="text-right num"><strong>${fmtQty(r.required_qty)}</strong></td>
-      <td class="text-right num">${r.available_qty !== null ? fmtQty(r.available_qty) : "ندارد"}</td>
+      <td class="text-right num">${r.available_qty !== null ? stockBadge(r.available_qty) : "ندارد"}</td>
       <td class="text-right num ${r.shortage > 0 ? "text-danger" : ""}">${r.shortage > 0 ? fmtQty(r.shortage) : "0"}</td>
       <td>${availStatusBadge(r.status)}</td>
     </tr>`

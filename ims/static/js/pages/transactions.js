@@ -11,6 +11,7 @@ import {
 } from "../ui.js";
 
 const TX_PAGE_SIZE = 30;
+const DEFAULT_TX_TYPE_FILTER = "PURCHASE_IN,OUT,ADJUSTMENT_IN,ADJUSTMENT_OUT";
 
 let txPage = 1;
 let txTotalPages = 1;
@@ -189,9 +190,10 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (e.key === "Enter") loadTransactions(true);
   });
   document.getElementById("h-reset-btn").addEventListener("click", () => {
-    ["h-search", "h-type", "h-user", "h-from", "h-to"].forEach((id) => {
+    ["h-search", "h-user", "h-from", "h-to"].forEach((id) => {
       document.getElementById(id).value = "";
     });
+    document.getElementById("h-type").value = DEFAULT_TX_TYPE_FILTER;
     loadTransactions(true);
   });
 

@@ -257,6 +257,13 @@
   color: var(--brand-green-dark);
 }
 
+.badge-stock-accent {
+  background: var(--brand-accent);
+  color: #1F2937;
+  border: 1px solid var(--brand-accent-hover);
+  font-weight: 800;
+}
+
 /* Alerts */
 .alert {
   padding: 12px 14px;

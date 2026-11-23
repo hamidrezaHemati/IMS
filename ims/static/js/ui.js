@@ -170,7 +170,7 @@ export function txTypeBadge(txType) {
 export function stockBadge(qty) {
   const n = Number(qty || 0);
   if (n === 0) return `<span class="badge badge-danger num">0 (ناموجود)</span>`;
-  return `<span class="badge badge-neutral num">${fmtQty(n)}</span>`;
+  return `<span class="badge badge-stock-accent num">${fmtQty(n)}</span>`;
 }
 
 export function toast(message, type = "info", duration = 4000) {
@@ -322,7 +322,7 @@ export async function openItemDetailModal(itemId) {
       <div class="spec-grid" style="margin-bottom: 16px;">
         <div class="spec-item">
           <div class="spec-label">موجودی فعلی</div>
-          <div class="spec-val num" style="font-size:1.15rem;">${fmtQty(item.quantity)}</div>
+          <div class="spec-val num" style="font-size:1.05rem;">${stockBadge(item.quantity)}</div>
         </div>
         <div class="spec-item">
           <div class="spec-label">قیمت میانگین</div>
