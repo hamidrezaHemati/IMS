@@ -195,7 +195,7 @@ def preview_import(
     sheet_names, selected_sheet, headers, data_rows = _read_workbook_sheet(path, sheet_name)
     mapping = column_mapping if isinstance(column_mapping, dict) and column_mapping else _suggest_mapping(headers)
 
-    required_mappings = ("item_code", "category", "model", "location", "quantity")
+    required_mappings = ("item_code", "category", "location", "quantity")
     missing_mapped_cols = [f for f in required_mappings if not mapping.get(f)]
     if missing_mapped_cols:
         raise AppError(
@@ -242,8 +242,6 @@ def preview_import(
 
         try:
             model = clean_text(get_col("model"), max_len=150)
-            if not model:
-                errors.append("Missing model.")
         except AppError as exc:
             model = None
             errors.append(f"model: {exc.message}")

@@ -152,7 +152,7 @@ async function loadItems(page = 1) {
         <tr class="clickable" data-row-item="${it.id}">
           <td class="mono"><strong>${escapeHtml(it.item_code)}</strong></td>
           <td>${escapeHtml(it.category_path)}</td>
-          <td>${escapeHtml(it.model)}</td>
+          <td>${escapeHtml(it.model || "—")}</td>
           <td>${escapeHtml(it.size || "—")} / ${escapeHtml(it.mounting_type || "—")}</td>
           <td>${escapeHtml(it.voltage || "—")} / ${escapeHtml(it.material || "—")}</td>
           <td>${escapeHtml(it.location)}</td>
@@ -172,7 +172,7 @@ async function loadItems(page = 1) {
         <div class="mobile-item-card" data-row-item="${it.id}">
           <div class="mobile-item-head">
             <div>
-              <strong class="mono">${escapeHtml(it.item_code)}</strong> — <strong>${escapeHtml(it.model)}</strong>
+              <strong class="mono">${escapeHtml(it.item_code)}</strong>${it.model ? ` — <strong>${escapeHtml(it.model)}</strong>` : ""}
               <div class="text-muted" style="font-size:0.78rem;">${escapeHtml(it.category_path)}</div>
             </div>
             ${stockBadge(it.quantity)}

@@ -306,9 +306,12 @@ def calculate_bom(
             lpc_missing = True
             lpc_missing_count += 1
 
-        display_name = db_row["model"]
-        if bom_line["bom_item_name"] and bom_line["bom_item_name"] != db_row["model"]:
-            display_name = f"{db_row['model']} ({bom_line['bom_item_name']})"
+        db_model = db_row["model"]
+        bom_name = bom_line["bom_item_name"]
+        if db_model and bom_name and bom_name != db_model:
+            display_name = f"{db_model} ({bom_name})"
+        else:
+            display_name = db_model or bom_name or code
 
         cost_report.append({
             "item_id": db_row["id"],

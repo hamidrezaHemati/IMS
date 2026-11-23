@@ -45,7 +45,7 @@ function renderPreviewRow(it) {
     <tr class="clickable" data-item-id="${it.id}">
       <td class="mono"><strong>${escapeHtml(it.item_code)}</strong></td>
       <td>${escapeHtml(it.category_path)}</td>
-      <td>${escapeHtml(it.model)}</td>
+      <td>${escapeHtml(it.model || "—")}</td>
       <td>${escapeHtml(it.size || "—")}</td>
       <td>${escapeHtml(it.mounting_type || "—")}</td>
       <td>${escapeHtml(vm)}</td>
@@ -62,7 +62,7 @@ function renderPreviewMobileCard(it) {
       <div class="mobile-item-head">
         <div>
           <strong class="mono">${escapeHtml(it.item_code)}</strong>
-          <div style="font-weight:600;">${escapeHtml(it.model)}</div>
+          ${it.model ? `<div style="font-weight:600;">${escapeHtml(it.model)}</div>` : ""}
           <div class="text-muted" style="font-size:0.78rem;">${escapeHtml(it.category_path)}</div>
         </div>
         ${stockBadge(it.quantity)}

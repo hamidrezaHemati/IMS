@@ -34,10 +34,10 @@ function getFilters(page = 1) {
 function renderTxDesktopRow(t) {
   return `
     <tr class="clickable" data-item-id="${t.item_id}">
-      <td class="text-muted">${escapeHtml(fmtDate(t.created_at))}</td>
+      <td class="text-muted ltr">${escapeHtml(fmtDate(t.created_at_jalali || t.created_at))}</td>
       <td>${txTypeBadge(t.transaction_type)}</td>
       <td class="mono"><strong>${escapeHtml(t.item_code)}</strong></td>
-      <td>${escapeHtml(t.model)}</td>
+      <td>${escapeHtml(t.model || "—")}</td>
       <td>${escapeHtml(t.user_name)}</td>
       <td class="text-right num"><strong>${fmtQty(t.quantity)}</strong></td>
       <td class="text-right num ltr">${fmtQty(t.stock_before)} → <strong>${fmtQty(t.stock_after)}</strong></td>
@@ -55,7 +55,7 @@ function renderTxMobileCard(t) {
         <div>
           ${txTypeBadge(t.transaction_type)}
           <strong class="mono">${escapeHtml(t.item_code)}</strong>
-          <div>${escapeHtml(t.model)}</div>
+          <div>${escapeHtml(t.model || "—")}</div>
         </div>
         <div class="text-right num">
           <strong>${fmtQty(t.quantity)}</strong>
@@ -64,7 +64,7 @@ function renderTxMobileCard(t) {
       </div>
       <div class="mobile-item-meta">
         <div><span class="text-muted">کاربر:</span> ${escapeHtml(t.user_name)}</div>
-        <div><span class="text-muted">تاریخ:</span> ${escapeHtml(fmtDate(t.created_at))}</div>
+        <div><span class="text-muted">تاریخ:</span> <span class="ltr">${escapeHtml(fmtDate(t.created_at_jalali || t.created_at))}</span></div>
         <div><span class="text-muted">بهای واحد:</span> <span class="num">${fmtPriceInline(t.unit_cost_snapshot, "نامشخص")}</span></div>
         <div><span class="text-muted">جمع ارزش:</span> <span class="num">${fmtPriceInline(t.transaction_cost_snapshot, "نامشخص")}</span></div>
       </div>

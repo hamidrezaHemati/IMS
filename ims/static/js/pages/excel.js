@@ -5,7 +5,7 @@ const IMPORT_FIELDS = [
   { key: "item_code", label: "کد قطعه", required: true },
   { key: "category", label: "دسته‌بندی اصلی", required: true },
   { key: "sub_category", label: "زیردسته", required: false },
-  { key: "model", label: "مدل", required: true },
+  { key: "model", label: "مدل / پارت نامبر / مقدار", required: false },
   { key: "location", label: "محل نگهداری / کشو", required: true },
   { key: "quantity", label: "موجودی اولیه", required: true },
   { key: "price", label: "قیمت واحد (ریال)", required: false },

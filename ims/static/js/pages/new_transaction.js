@@ -106,7 +106,7 @@ function renderCart() {
         <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
           <div style="min-width:0;">
             <strong class="mono">${escapeHtml(item.item_code)}</strong>
-            <span class="text-secondary"> — ${escapeHtml(item.model)}</span>
+            ${item.model ? `<span class="text-secondary"> — ${escapeHtml(item.model)}</span>` : ""}
             <div class="text-muted" style="font-size:0.78rem;">
               موجودی: <strong class="num">${fmtQty(item.quantity)}</strong> • محل: ${escapeHtml(item.location)}
             </div>
@@ -252,7 +252,7 @@ function openReviewModal() {
       return `
       <tr>
         <td class="mono"><strong>${escapeHtml(item.item_code)}</strong></td>
-        <td>${escapeHtml(item.model)}</td>
+        <td>${escapeHtml(item.model || "—")}</td>
         <td class="text-right num"><strong>${fmtQty(quantity)}</strong></td>
         <td class="text-right num">${unitCostCell}</td>
         <td>${warn}</td>
@@ -339,7 +339,7 @@ function showResultsModal(res) {
         <tr>
           <td><span class="badge badge-success">ثبت شد</span></td>
           <td class="mono"><strong>${escapeHtml(r.item_code)}</strong></td>
-          <td>${escapeHtml(r.model)}</td>
+          <td>${escapeHtml(r.model || "—")}</td>
           <td class="text-right num">${fmtQty(tx.quantity)}</td>
           <td class="text-right num ltr">${fmtQty(tx.stock_before)} → <strong>${fmtQty(tx.stock_after)}</strong></td>
           <td class="text-right num">${fmtPriceHtml(tx.unit_cost_snapshot, "نامشخص")}</td>
@@ -423,7 +423,7 @@ function renderCatalogRow(it) {
       <div style="min-width:200px;flex:1;">
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
           <strong class="mono">${escapeHtml(it.item_code)}</strong>
-          <strong>${escapeHtml(it.model)}</strong>
+          ${it.model ? `<strong>${escapeHtml(it.model)}</strong>` : ""}
           ${stockBadge(it.quantity)}
         </div>
         <div class="text-secondary" style="font-size:0.81rem;margin-top:2px;">

@@ -35,7 +35,7 @@ async function loadUsers() {
         <td class="mono">@${escapeHtml(u.user_name)}</td>
         <td><span class="badge ${badgeCls}">${escapeHtml(roleLabel(u.role_name))}</span></td>
         <td class="text-right num">${fmtQty(u.transaction_count)}</td>
-        <td class="text-muted">${escapeHtml(fmtDate(u.created_at))}</td>
+        <td class="text-muted ltr">${escapeHtml(fmtDate(u.created_at_jalali || u.created_at))}</td>
       </tr>`;
       })
       .join("");

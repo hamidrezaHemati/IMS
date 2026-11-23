@@ -1,10 +1,12 @@
 """Comprehensive end-to-end tests for IMS against a real isolated PostgreSQL test database."""
 
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timezone
 from decimal import Decimal
 from io import BytesIO
 import os
 from pathlib import Path
+import re
 import shutil
 import tempfile
 import unittest
@@ -15,6 +17,12 @@ from psycopg2 import sql
 
 import database_init
 from ims import create_app
+from ims.jalali import (
+    format_jalali_date,
+    format_jalali_datetime,
+    gregorian_to_jalali,
+    jalali_to_gregorian,
+)
 
 
 TEST_DB_NAME = "IMS_test_db"
@@ -298,7 +306,7 @@ class IMSEndToEndTestCase(unittest.TestCase):
         item_after = self.client.get("/api/items?item_code=1002").get_json()["items"][0]
         self.assertEqual(item_after["quantity"], 90)
 
-        # Custom workbook testing: duplicate codes in file, missing category, zero-qty item
+        # Custom workbook testing: duplicate codes in file, missing category, zero-qty item, nullable model
         custom_xlsx = _make_xlsx_bytes(
             ["item_code", "category", "sub_category", "model", "location", "quantity", "price"],
             [
@@ -306,6 +314,7 @@ class IMSEndToEndTestCase(unittest.TestCase):
                 ["DUP-1", "Electronics", "Diode", "1N4148", "A1", 20, 0.5],
                 ["NOCAT-1", "", "Diode", "1N4007", "A2", 5, 1.0],
                 ["ZERO-1", "Electronics", "MCU", "STM32F103", "B1", 0, None],
+                ["NOMODEL-IMP", "Electronics", "Diode", None, "A3", 5, 1000],
             ],
         )
         up4 = self.client.post(
@@ -323,8 +332,12 @@ class IMSEndToEndTestCase(unittest.TestCase):
         ).get_json()
         self.assertEqual(conf4["summary"]["duplicate_rows"], 2)
         self.assertEqual(conf4["summary"]["missing_category_rows"], 1)
-        self.assertEqual(conf4["summary"]["created_items"], 1)
-        self.assertEqual(conf4["summary"]["opening_transactions_created"], 0)
+        self.assertEqual(conf4["summary"]["created_items"], 2)
+        self.assertEqual(conf4["summary"]["opening_transactions_created"], 1)
+
+        nomodel_imp = self.client.get("/api/items?item_code=NOMODEL-IMP").get_json()["items"][0]
+        self.assertIsNone(nomodel_imp["model"])
+        self.assertEqual(nomodel_imp["quantity"], 5)
 
         zero_item = self.client.get("/api/items?item_code=ZERO-1").get_json()["items"][0]
         self.assertEqual(zero_item["quantity"], 0)
@@ -571,6 +584,7 @@ class IMSEndToEndTestCase(unittest.TestCase):
         # Filtered Inventory Excel Export (e.g. SMD only)
         exp_inv = self.client.get("/api/export/inventory?mounting_type=SMD")
         self.assertEqual(exp_inv.status_code, 200)
+        self.assertRegex(exp_inv.headers["Content-Disposition"], r"inventory_report_\d{8}_\d{4}\.xlsx")
         wb_inv = load_workbook(BytesIO(exp_inv.data))
         ws_inv = wb_inv.active
         headers = [cell.value for cell in ws_inv[1]]
@@ -578,13 +592,20 @@ class IMSEndToEndTestCase(unittest.TestCase):
         self.assertIn("Total Value (WAC)", headers)
         self.assertIn("Weighted Avg Cost (Rial)", headers)
         self.assertIn("Total Value (WAC) (Toman)", headers)
+        self.assertIn("Updated At (Jalali)", headers)
         self.assertGreaterEqual(ws_inv.max_row, 4)
 
         # Filtered Transaction Excel Export
         exp_tx = self.client.get("/api/export/transactions?transaction_type=OPENING")
         self.assertEqual(exp_tx.status_code, 200)
+        self.assertRegex(exp_tx.headers["Content-Disposition"], r"transactions_report_\d{8}_\d{4}\.xlsx")
         wb_tx = load_workbook(BytesIO(exp_tx.data))
-        self.assertGreaterEqual(wb_tx.active.max_row, 10)
+        ws_tx = wb_tx.active
+        tx_headers = [cell.value for cell in ws_tx[1]]
+        self.assertIn("Timestamp (Jalali)", tx_headers)
+        self.assertNotIn("Timestamp (UTC)", tx_headers)
+        self.assertRegex(str(ws_tx.cell(row=2, column=2).value), r"^\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}$")
+        self.assertGreaterEqual(ws_tx.max_row, 10)
 
         # All UI routes load cleanly with HTTP 200 for admin
         for route in ("/", "/inventory", "/transactions/new", "/bom", "/transactions", "/reports", "/excel", "/users", "/settings"):
@@ -604,6 +625,7 @@ class IMSEndToEndTestCase(unittest.TestCase):
             "f-below",
             "f-zero",
             "f-model",
+            "مدل / پارت نامبر / مقدار",
             "f-size",
             "f-mounting",
             "f-voltage",
@@ -611,6 +633,7 @@ class IMSEndToEndTestCase(unittest.TestCase):
             "قیمت میانگین",
         ):
             self.assertIn(must_have, inv_html)
+        self.assertLess(inv_html.index('id="f-model"'), inv_html.index('id="inv-secondary-filters"'))
 
         new_tx_html = self.client.get("/transactions/new").get_data(as_text=True)
         for must_have in (
@@ -630,10 +653,12 @@ class IMSEndToEndTestCase(unittest.TestCase):
             "t-mounting",
             "t-size",
             "t-model",
+            "مدل / پارت نامبر / مقدار",
             "t-voltage",
             "t-material",
         ):
             self.assertIn(must_have, new_tx_html)
+        self.assertLess(new_tx_html.index('id="t-model"'), new_tx_html.index('id="tx-secondary-filters"'))
         new_tx_js = self.client.get("/static/js/pages/new_transaction.js").get_data(as_text=True)
         for js_token in ("قیمت میانگین", "ریال", "data-toman-preview"):
             self.assertIn(js_token, new_tx_js)
@@ -641,9 +666,9 @@ class IMSEndToEndTestCase(unittest.TestCase):
             self.assertNotIn(must_not_have, new_tx_html)
 
         dash_html = self.client.get("/").get_data(as_text=True)
-        for must_have in ("dashboard-kpis", "dash-recent-tx", "dash-recent-items"):
+        for must_have in ("dashboard-kpis", "dash-recent-tx", "dash-recent-items", "تاریخچه تراکنش‌ها", "موجودی و گزارش انبار"):
             self.assertIn(must_have, dash_html)
-        for must_not_have in ("dash-items-tbody", "dash-items-mobile", "dash-pagination", "موجودی فعلی انبار"):
+        for must_not_have in ("dash-items-tbody", "dash-items-mobile", "dash-pagination", "موجودی فعلی انبار", "خروجی گزارش اکسل"):
             self.assertNotIn(must_not_have, dash_html)
 
         reports_html = self.client.get("/reports").get_data(as_text=True)
@@ -677,10 +702,12 @@ class IMSEndToEndTestCase(unittest.TestCase):
             "دانلود اکسل موارد منطبق",
             "پاک کردن فیلترها",
             "دانلود گزارش کامل تراکنش‌ها",
+            "data-jalali-date",
         ):
             self.assertIn(must_have, tx_html)
         for removed in (
             "h-pagination",
+            'type="date"',
             'id="r-from"',
             'id="r-to"',
             "r-tx-tbody",
@@ -763,6 +790,96 @@ class IMSEndToEndTestCase(unittest.TestCase):
         # Admin cleans up employee-created category
         self.login_admin()
         self.assertEqual(self.client.delete(f"/api/categories/{cat_id}").status_code, 200)
+
+    def test_08_jalali_calendar_schema_and_nullable_model(self):
+        self.login_admin()
+
+        # 1. Verify schema properties: app_user.role_id NOT NULL, item.model NULLABLE, created_at_jalali NOT NULL
+        db = self.app.extensions["db"]
+        with db.cursor() as cur:
+            cur.execute(
+                """
+                SELECT table_name, column_name, is_nullable
+                  FROM information_schema.columns
+                 WHERE (table_name = 'app_user' AND column_name = 'role_id')
+                    OR (table_name = 'item' AND column_name = 'model')
+                    OR (table_name = 'inventory_transaction' AND column_name = 'created_at_jalali');
+                """
+            )
+            cols = {(r["table_name"], r["column_name"]): r["is_nullable"] for r in cur.fetchall()}
+        self.assertEqual(cols[("app_user", "role_id")], "NO")
+        self.assertEqual(cols[("item", "model")], "YES")
+        self.assertEqual(cols[("inventory_transaction", "created_at_jalali")], "NO")
+
+        # 2. Verify Python & PostgreSQL fn_to_jalali_timestamp parity (Iran UTC+03:30)
+        self.assertEqual(gregorian_to_jalali(2025, 3, 20), (1403, 12, 30))
+        self.assertEqual(jalali_to_gregorian(1403, 12, 30), (2025, 3, 20))
+        self.assertEqual(gregorian_to_jalali(2026, 11, 23), (1405, 9, 2))
+
+        sample_instants = (
+            datetime(2025, 3, 19, 20, 30, 0, tzinfo=timezone.utc),  # 1403/12/30 00:00:00 Tehran
+            datetime(2025, 3, 20, 20, 30, 0, tzinfo=timezone.utc),  # 1404/01/01 00:00:00 Tehran
+            datetime(2026, 11, 23, 8, 45, 12, tzinfo=timezone.utc),  # 1405/09/02 12:15:12 Tehran
+        )
+        with db.cursor() as cur:
+            for dt in sample_instants:
+                cur.execute("SELECT fn_to_jalali_timestamp(%s::timestamptz) AS jts;", (dt,))
+                self.assertEqual(cur.fetchone()["jts"], format_jalali_datetime(dt))
+
+        # 3. Verify nullable item.model via CRUD, transactions, BOM, and Jalali date filtering
+        cat_id = self.client.get("/api/categories").get_json()["categories"][0]["id"]
+        no_model_resp = self.client.post(
+            "/api/items",
+            json={
+                "item_code": "NOMODEL-API",
+                "category_id": cat_id,
+                "model": "",
+                "location": "D4",
+            },
+        )
+        self.assertEqual(no_model_resp.status_code, 201)
+        no_model_item = no_model_resp.get_json()["item"]
+        self.assertIsNone(no_model_item["model"])
+
+        tx_resp = self.client.post(
+            "/api/transactions",
+            json={
+                "item_id": no_model_item["id"],
+                "transaction_type": "OPENING",
+                "quantity": 12,
+                "price": "25000",
+            },
+        )
+        self.assertEqual(tx_resp.status_code, 201)
+        tx = tx_resp.get_json()["transaction"]
+        self.assertRegex(tx["created_at_jalali"], r"^\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}$")
+
+        # Jalali filtering on /api/transactions (supports ASCII and Persian digits)
+        today_j = format_jalali_date()
+        res_today = self.client.get(f"/api/transactions?date_from={today_j}&date_to={today_j}")
+        self.assertEqual(res_today.status_code, 200)
+        self.assertGreaterEqual(res_today.get_json()["total"], 10)
+        self.assertRegex(
+            res_today.get_json()["transactions"][0]["created_at_jalali"],
+            r"^\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}$",
+        )
+
+        res_old = self.client.get("/api/transactions?date_from=1390/01/01&date_to=1390/01/02")
+        self.assertEqual(res_old.status_code, 200)
+        self.assertEqual(res_old.get_json()["total"], 0)
+
+        res_invalid_date = self.client.get("/api/transactions?date_from=1405/12/30")
+        self.assertEqual(res_invalid_date.status_code, 400)
+
+        # BOM works cleanly with a NULL-model item
+        bom_null = _make_xlsx_bytes(["Item Code", "Quantity"], [["NOMODEL-API", 3]])
+        bom_resp = self.client.post(
+            "/api/bom/calculate",
+            data={"file": (bom_null, "bom_nomodel.xlsx")},
+            content_type="multipart/form-data",
+        )
+        self.assertEqual(bom_resp.status_code, 200)
+        self.assertEqual(bom_resp.get_json()["availability_summary"]["available"], 1)
 
 
 if __name__ == "__main__":

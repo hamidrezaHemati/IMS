@@ -4,6 +4,7 @@ from decimal import Decimal
 import math
 import psycopg2
 from ims.db import AppError, get_db, translate_pg_error
+from ims.jalali import format_jalali_datetime, parse_filter_date_to_tehran_range
 from ims.services.item_service import CAT_INFO_CTE
 from ims.utils import (
     clean_text,
@@ -74,7 +75,7 @@ def process_single_transaction(
                 RETURNING
                     id, user_id, item_id, quantity, transaction_type, price,
                     stock_before, stock_after, unit_cost_snapshot,
-                    transaction_cost_snapshot, created_at, description;
+                    transaction_cost_snapshot, created_at, created_at_jalali, description;
                 """,
                 (user_id, item_id, quantity, clean_type, price, clean_desc),
             )
@@ -96,6 +97,9 @@ def process_single_transaction(
                 (item_id,),
             )
             inv_row = dict(cur.fetchone())
+            inv_row["inventory_updated_at_jalali"] = format_jalali_datetime(
+                inv_row.get("inventory_updated_at")
+            )
     except psycopg2.Error as exc:
         raise translate_pg_error(exc) from exc
 
@@ -310,7 +314,7 @@ def build_transaction_filter_sql(filters: dict) -> tuple[str, list]:
     if search:
         like = f"%{search}%"
         clauses.append(
-            "(i.item_code ILIKE %s OR i.model ILIKE %s OR COALESCE(t.description, '') ILIKE %s OR u.user_name ILIKE %s)"
+            "(i.item_code ILIKE %s OR COALESCE(i.model, '') ILIKE %s OR COALESCE(t.description, '') ILIKE %s OR u.user_name ILIKE %s)"
         )
         params.extend([like, like, like, like])
 
@@ -324,15 +328,15 @@ def build_transaction_filter_sql(filters: dict) -> tuple[str, list]:
             clauses.append("t.transaction_type = ANY(%s)")
             params.append(types)
 
-    date_from = clean_text(filters.get("date_from"))
-    if date_from:
-        clauses.append("t.created_at >= %s::date")
-        params.append(date_from)
+    from_range = parse_filter_date_to_tehran_range(filters.get("date_from"), "date_from")
+    if from_range:
+        clauses.append("t.created_at >= %s")
+        params.append(from_range[0])
 
-    date_to = clean_text(filters.get("date_to"))
-    if date_to:
-        clauses.append("t.created_at < (%s::date + INTERVAL '1 day')")
-        params.append(date_to)
+    to_range = parse_filter_date_to_tehran_range(filters.get("date_to"), "date_to")
+    if to_range:
+        clauses.append("t.created_at < %s")
+        params.append(to_range[1])
 
     where_sql = f"WHERE {' AND '.join(clauses)}" if clauses else ""
     return where_sql, params
@@ -386,6 +390,7 @@ def list_transactions(filters: dict, paginate: bool = True) -> dict:
                 t.unit_cost_snapshot,
                 t.transaction_cost_snapshot,
                 t.created_at,
+                t.created_at_jalali,
                 t.description
               FROM inventory_transaction t
               JOIN item i ON i.id = t.item_id

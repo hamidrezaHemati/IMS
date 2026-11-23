@@ -58,12 +58,22 @@
           </select>
         </div>
         <div class="field">
-          <label for="h-from">از تاریخ</label>
-          <input id="h-from" class="input ltr" type="date">
+          <label for="h-from">از تاریخ (شمسی)</label>
+          <div class="jdate-wrap">
+            <input id="h-from" class="input ltr jdate-input" type="text" inputmode="numeric" autocomplete="off" placeholder="1405/09/01" data-jalali-date>
+            <button type="button" class="jdate-trigger" data-jdate-toggle="h-from" aria-label="انتخاب تاریخ شمسی">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+            </button>
+          </div>
         </div>
         <div class="field">
-          <label for="h-to">تا تاریخ</label>
-          <input id="h-to" class="input ltr" type="date">
+          <label for="h-to">تا تاریخ (شمسی)</label>
+          <div class="jdate-wrap">
+            <input id="h-to" class="input ltr jdate-input" type="text" inputmode="numeric" autocomplete="off" placeholder="1405/09/01" data-jalali-date>
+            <button type="button" class="jdate-trigger" data-jdate-toggle="h-to" aria-label="انتخاب تاریخ شمسی">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+            </button>
+          </div>
         </div>
       </div>
       <div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap;">

@@ -3,6 +3,7 @@
 import json
 from flask import Blueprint, current_app, jsonify, make_response, request
 from ims.auth import login_required
+from ims.jalali import format_jalali_filename_stamp
 from ims.services import bom_service
 from ims.utils import save_uploaded_xlsx
 
@@ -70,10 +71,11 @@ def export_bom():
         column_mapping=data.get("column_mapping"),
     )
     xlsx_bytes = bom_service.export_bom_report_xlsx(analysis)
+    stamp = format_jalali_filename_stamp()
 
     resp = make_response(xlsx_bytes)
     resp.headers["Content-Type"] = (
         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
-    resp.headers["Content-Disposition"] = 'attachment; filename="bom_cost_report.xlsx"'
+    resp.headers["Content-Disposition"] = f'attachment; filename="bom_cost_report_{stamp}.xlsx"'
     return resp

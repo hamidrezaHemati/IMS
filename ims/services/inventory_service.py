@@ -1,6 +1,7 @@
 """Dashboard metrics and inventory analytics service."""
 
 from ims.db import get_db
+from ims.jalali import format_jalali_datetime, parse_filter_date_to_tehran_range
 from ims.services.item_service import CAT_INFO_CTE
 from ims.utils import clean_text
 
@@ -70,6 +71,7 @@ def get_dashboard_summary() -> dict:
                 t.unit_cost_snapshot,
                 t.transaction_cost_snapshot,
                 t.created_at,
+                t.created_at_jalali,
                 u.user_name
             FROM inventory_transaction t
             JOIN item i ON i.id = t.item_id
@@ -105,7 +107,11 @@ def get_dashboard_summary() -> dict:
             LIMIT 5;
             """
         )
-        recent_items = [dict(r) for r in cur.fetchall()]
+        recent_items = []
+        for r in cur.fetchall():
+            item = dict(r)
+            item["created_at_jalali"] = format_jalali_datetime(item.get("created_at"))
+            recent_items.append(item)
 
     wac_complete = inv_metrics["wac_missing_cost_items"] == 0
     lpc_complete = inv_metrics["lpc_missing_cost_items"] == 0
@@ -132,17 +138,16 @@ def get_dashboard_summary() -> dict:
 
 def get_analytics(date_from: str | None = None, date_to: str | None = None) -> dict:
     """Compute category valuation breakdown and transaction movement summaries."""
-    clean_from = clean_text(date_from)
-    clean_to = clean_text(date_to)
-
     tx_clauses = []
     tx_params: list = []
-    if clean_from:
-        tx_clauses.append("t.created_at >= %s::date")
-        tx_params.append(clean_from)
-    if clean_to:
-        tx_clauses.append("t.created_at < (%s::date + INTERVAL '1 day')")
-        tx_params.append(clean_to)
+    from_range = parse_filter_date_to_tehran_range(clean_text(date_from), "date_from")
+    if from_range:
+        tx_clauses.append("t.created_at >= %s")
+        tx_params.append(from_range[0])
+    to_range = parse_filter_date_to_tehran_range(clean_text(date_to), "date_to")
+    if to_range:
+        tx_clauses.append("t.created_at < %s")
+        tx_params.append(to_range[1])
     tx_where = f"WHERE {' AND '.join(tx_clauses)}" if tx_clauses else ""
 
     db = get_db()

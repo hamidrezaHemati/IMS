@@ -11,6 +11,7 @@ from ims.auth import (
     verify_password,
 )
 from ims.db import AppError, get_db, translate_pg_error
+from ims.jalali import format_jalali_datetime
 from ims.utils import clean_text, parse_optional_int
 
 bp = Blueprint("api_auth", __name__, url_prefix="/api")
@@ -76,7 +77,11 @@ def list_users():
             ORDER BY u.id ASC;
             """
         )
-        users = [dict(r) for r in cur.fetchall()]
+        users = []
+        for r in cur.fetchall():
+            u = dict(r)
+            u["created_at_jalali"] = format_jalali_datetime(u.get("created_at"))
+            users.append(u)
     return jsonify({"users": users})
 
 
@@ -134,6 +139,7 @@ def create_user():
 
     user["role_name"] = role_row["name"]
     user["transaction_count"] = 0
+    user["created_at_jalali"] = format_jalali_datetime(user.get("created_at"))
     return jsonify({"user": user}), 201
 
 

@@ -3,6 +3,7 @@
 import math
 import psycopg2
 from ims.db import AppError, get_db, translate_pg_error
+from ims.jalali import format_jalali_datetime
 from ims.utils import (
     clean_text,
     normalize_mounting_type,
@@ -69,7 +70,7 @@ def build_inventory_filter_sql(filters: dict) -> tuple[str, list]:
         clauses.append(
             """(
                 i.item_code ILIKE %s
-                OR i.model ILIKE %s
+                OR COALESCE(i.model, '') ILIKE %s
                 OR COALESCE(i.size, '') ILIKE %s
                 OR COALESCE(i.material, '') ILIKE %s
                 OR COALESCE(i.voltage, '') ILIKE %s
@@ -83,7 +84,7 @@ def build_inventory_filter_sql(filters: dict) -> tuple[str, list]:
 
     text_ilike_fields = (
         ("item_code", "i.item_code"),
-        ("model", "i.model"),
+        ("model", "COALESCE(i.model, '')"),
         ("size", "COALESCE(i.size, '')"),
         ("material", "COALESCE(i.material, '')"),
         ("voltage", "COALESCE(i.voltage, '')"),
@@ -180,7 +181,7 @@ def _build_order_sql(filters: dict) -> str:
     sort_expr = _SORT_EXPRESSIONS.get(sort_by, _SORT_EXPRESSIONS["item_code"])
     sort_dir = (filters.get("sort_dir") or "asc").strip().lower()
     direction = "DESC" if sort_dir == "desc" else "ASC"
-    nulls_clause = "NULLS LAST" if sort_by in ("weighted_avg_cost", "last_purchase_cost") else ""
+    nulls_clause = "NULLS LAST" if sort_by in ("model", "weighted_avg_cost", "last_purchase_cost") else ""
     return f"ORDER BY {sort_expr} {direction} {nulls_clause}, i.id ASC"
 
 
@@ -250,7 +251,14 @@ def list_items(filters: dict, paginate: bool = True) -> dict:
             {limit_sql};
         """
         cur.execute(data_sql, tuple(query_params))
-        rows = [dict(r) for r in cur.fetchall()]
+        rows = []
+        for r in cur.fetchall():
+            item_dict = dict(r)
+            item_dict["created_at_jalali"] = format_jalali_datetime(item_dict.get("created_at"))
+            item_dict["inventory_updated_at_jalali"] = format_jalali_datetime(
+                item_dict.get("inventory_updated_at")
+            )
+            rows.append(item_dict)
 
     total_pages = max(1, math.ceil(total / page_size)) if paginate else 1
     return {
@@ -327,6 +335,7 @@ def get_item_detail(item_id: int, tx_limit: int = 50) -> dict:
                 t.unit_cost_snapshot,
                 t.transaction_cost_snapshot,
                 t.created_at,
+                t.created_at_jalali,
                 t.description
             FROM inventory_transaction t
             JOIN app_user u ON u.id = t.user_id
@@ -339,6 +348,10 @@ def get_item_detail(item_id: int, tx_limit: int = 50) -> dict:
         transactions = [dict(r) for r in cur.fetchall()]
 
     result = dict(item_row)
+    result["created_at_jalali"] = format_jalali_datetime(result.get("created_at"))
+    result["inventory_updated_at_jalali"] = format_jalali_datetime(
+        result.get("inventory_updated_at")
+    )
     result["transactions"] = transactions
     return result
 
@@ -354,8 +367,6 @@ def validate_item_payload(data: dict) -> dict:
         raise AppError("Category is required.")
 
     model = clean_text(data.get("model"), max_len=150)
-    if not model:
-        raise AppError("Model is required.")
 
     location = clean_text(data.get("location"), max_len=150)
     if not location:

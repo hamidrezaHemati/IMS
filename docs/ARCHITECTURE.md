@@ -135,6 +135,7 @@ erDiagram
         NUMERIC unit_cost_snapshot
         NUMERIC transaction_cost_snapshot
         TIMESTAMPTZ created_at
+        VARCHAR created_at_jalali
         TEXT description
     }
 
@@ -151,19 +152,19 @@ erDiagram
 ### Exact Table Constraints & Precision Highlights
 
 - **`role`**: `name VARCHAR(50) UNIQUE NOT NULL` (seeded with `admin` and `employee`).
-- **`app_user`**: `user_name VARCHAR(80) UNIQUE NOT NULL`, `password_hash TEXT NOT NULL`, `role_id BIGINT NULL` FK -> `role.id` (`ON UPDATE RESTRICT ON DELETE RESTRICT`).
+- **`app_user`**: `user_name VARCHAR(80) UNIQUE NOT NULL`, `password_hash TEXT NOT NULL`, `role_id BIGINT NOT NULL` FK -> `role.id` (`ON UPDATE RESTRICT ON DELETE RESTRICT`).
 - **`user_role_assignment`**: `(user_id, role_id) UNIQUE`, linking `app_user` (`ON DELETE CASCADE`) and `role` (`ON DELETE RESTRICT`).
 - **`category`**: Self-referencing `parent_id` with `ON UPDATE RESTRICT ON DELETE RESTRICT` and `CHECK (parent_id IS NULL OR parent_id <> id)`.
-- **`item`**: `item_code VARCHAR(80) UNIQUE NOT NULL`, `model VARCHAR(150) NOT NULL`, `location VARCHAR(150) NOT NULL`, `mounting_type VARCHAR(10) NULL` constrained to `'SMD'` or `'DIP'`, `category_id` FK (`ON DELETE RESTRICT`).
+- **`item`**: `item_code VARCHAR(80) UNIQUE NOT NULL`, `model VARCHAR(150) NULL`, `location VARCHAR(150) NOT NULL`, `mounting_type VARCHAR(10) NULL` constrained to `'SMD'` or `'DIP'`, `category_id` FK (`ON DELETE RESTRICT`).
 - **`inventory`**: `item_id BIGINT UNIQUE NOT NULL` (`ON DELETE RESTRICT`), `quantity BIGINT DEFAULT 0 CHECK (quantity >= 0)`, `weighted_avg_cost NUMERIC(18,4) NULL CHECK (>= 0)`, `last_purchase_cost NUMERIC(18,4) NULL CHECK (>= 0)`.
-- **`inventory_transaction`**: `quantity BIGINT CHECK (quantity > 0)`, `price NUMERIC(18,4) NULL`, `unit_cost_snapshot NUMERIC(18,4) NULL`, `transaction_cost_snapshot NUMERIC(24,4) GENERATED ALWAYS AS (quantity::NUMERIC * unit_cost_snapshot) STORED`, stock direction & non-negative checks, and `chk_transaction_price_by_type`.
+- **`inventory_transaction`**: `quantity BIGINT CHECK (quantity > 0)`, `price NUMERIC(18,4) NULL`, `unit_cost_snapshot NUMERIC(18,4) NULL`, `transaction_cost_snapshot NUMERIC(24,4) GENERATED ALWAYS AS (quantity::NUMERIC * unit_cost_snapshot) STORED`, `created_at_jalali VARCHAR(32) NOT NULL`, stock direction & non-negative checks, and `chk_transaction_price_by_type`.
 
 ### PostgreSQL Triggers (`database_init.py`)
 
 | Trigger Name | Event | Trigger Function | Responsibility |
 | :--- | :--- | :--- | :--- |
 | `trg_create_inventory_for_item` | `AFTER INSERT ON item` | `fn_create_inventory_for_item()` | Inserts matching `inventory(quantity=0, weighted_avg_cost=NULL, last_purchase_cost=NULL)` row. |
-| `trg_prepare_inventory_transaction` | `BEFORE INSERT ON inventory_transaction` | `fn_prepare_inventory_transaction()` | Validates type/qty/price, locks `inventory` via `SELECT ... FOR UPDATE`, blocks negative stock, sets `stock_before`, `stock_after`, `unit_cost_snapshot`, and `created_at`. |
+| `trg_prepare_inventory_transaction` | `BEFORE INSERT ON inventory_transaction` | `fn_prepare_inventory_transaction()` | Validates type/qty/price, locks `inventory` via `SELECT ... FOR UPDATE`, blocks negative stock, sets `stock_before`, `stock_after`, `unit_cost_snapshot`, `created_at`, and `created_at_jalali` (via `fn_to_jalali_timestamp()`). |
 | `trg_apply_inventory_transaction` | `AFTER INSERT ON inventory_transaction` | `fn_apply_inventory_transaction()` | Updates `inventory.quantity`, recomputes `weighted_avg_cost`, updates `last_purchase_cost` on `PURCHASE_IN` or priced `OPENING`, and refreshes `updated_at`. |
 | `trg_prevent_transaction_update` / `trg_prevent_transaction_delete` | `BEFORE UPDATE` / `BEFORE DELETE ON inventory_transaction` | `fn_prevent_transaction_mutation()` | Raises an exception so historical transactions remain strictly immutable. |
 | `trg_validate_category_hierarchy` | `BEFORE INSERT OR UPDATE OF parent_id ON category` | `fn_validate_category_hierarchy()` | Uses a recursive CTE over ancestors to reject circular hierarchies (`A -> B -> A`). |
@@ -239,6 +240,10 @@ Weighted Average Cost (`fn_apply_inventory_transaction`) rules when incoming `pr
 - **[ims/utils.py](file:///e:/works/YaraSystem/IMS%20-%20inventory%20management%20system/IMS/ims/utils.py)**  
   **Purpose:** Shared input sanitization, numeric/type parsing, and temporary Excel upload utilities.  
   **What it does:** Implements `clean_text()` (normalizes strings and Excel float artifacts like `1001.0`), `normalize_mounting_type()` (`SMD`/`DIP`), strict `parse_positive_int()`, `parse_nonnegative_int()`, `parse_optional_price()` (`Decimal` quantized to 4 decimal places), `parse_optional_int()`, and `parse_bool_param()`. Also manages temporary `.xlsx` uploads via `save_uploaded_xlsx()`, `resolve_uploaded_xlsx()`, and `purge_old_uploads()` (1-hour TTL).
+
+- **[ims/jalali.py](file:///e:/works/YaraSystem/IMS%20-%20inventory%20management%20system/IMS/ims/jalali.py)**  
+  **Purpose:** Zero-dependency Jalali (Shamsi) calendar conversions, formatting, and date-range filtering anchored to Tehran time (`UTC+03:30`).  
+  **What it does:** Converts between Gregorian and Jalali (`gregorian_to_jalali`, `jalali_to_gregorian`), formats `YYYY/MM/DD HH:MM:SS` timestamps and export filename stamps (`format_jalali_datetime`, `format_jalali_filename_stamp`), and parses Jalali (`YYYY/MM/DD` with Persian or ASCII digits) filter inputs into Tehran-day `[start, end)` timestamp bounds (`parse_filter_date_to_tehran_range`).
 
 ---
 

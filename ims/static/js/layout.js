@@ -1,6 +1,8 @@
 import { apiFetch } from "./api.js";
+import { initJalaliDatepickers } from "./jalali_datepicker.js";
 
 document.addEventListener("DOMContentLoaded", () => {
+  initJalaliDatepickers();
   const sidebar = document.getElementById("app-sidebar");
   const backdrop = document.getElementById("sidebar-backdrop");
   const openBtn = document.getElementById("sidebar-open-btn");

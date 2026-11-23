@@ -120,8 +120,8 @@ export function openItemModal({
           <select id="m-item-cat" class="select" required>${catOptions}</select>
         </div>
         <div class="field">
-          <label for="m-item-model">مدل *</label>
-          <input id="m-item-model" class="input" required maxlength="150" value="${escapeHtml(existing ? existing.model : "")}">
+          <label for="m-item-model">مدل / پارت نامبر / مقدار</label>
+          <input id="m-item-model" class="input" maxlength="150" value="${escapeHtml(existing ? existing.model || "" : "")}">
         </div>
         <div class="field">
           <label for="m-item-location">محل نگهداری / کشو *</label>

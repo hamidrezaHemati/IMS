@@ -16,19 +16,17 @@
     <span class="quick-icon">+</span>
     <span>ثبت تراکنش جدید</span>
   </a>
-  {% if current_user and current_user.is_admin %}
-  <a class="quick-btn" href="{{ url_for('pages.excel') }}">
-    <span class="quick-icon">↑</span>
-    <span>ورود اکسل انبار</span>
+  <a class="quick-btn" href="{{ url_for('pages.transactions') }}">
+    <span class="quick-icon">↺</span>
+    <span>تاریخچه تراکنش‌ها</span>
   </a>
-  {% endif %}
   <a class="quick-btn" href="{{ url_for('pages.bom') }}">
     <span class="quick-icon">✓</span>
     <span>محاسبه‌گر هزینه BOM</span>
   </a>
-  <a class="quick-btn" href="{{ url_for('pages.reports') }}#export">
+  <a class="quick-btn" href="{{ url_for('pages.reports') }}">
     <span class="quick-icon">↓</span>
-    <span>خروجی گزارش اکسل</span>
+    <span>موجودی و گزارش انبار</span>
   </a>
 </div>
 

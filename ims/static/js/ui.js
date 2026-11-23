@@ -1,4 +1,5 @@
 import { apiFetch } from "./api.js";
+import { formatJalaliDateTime } from "./jalali_datepicker.js";
 
 export function escapeHtml(str) {
   if (str === null || str === undefined) return "";
@@ -132,18 +133,14 @@ export function rialToTomanDisplay(rawVal) {
   return `معادل: ${fmtNumber(num / 10)} تومان`;
 }
 
-export function fmtDate(iso) {
-  if (!iso) return "—";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return String(iso);
-  try {
-    return new Intl.DateTimeFormat("fa-IR", {
-      dateStyle: "medium",
-      timeStyle: "short",
-    }).format(d);
-  } catch {
-    return d.toLocaleString("fa-IR");
+export function fmtDate(isoOrJalali) {
+  if (!isoOrJalali) return "—";
+  const text = String(isoOrJalali).trim();
+  const jalaliMatch = text.match(/^(\d{4}\/\d{2}\/\d{2})(?:[ T](\d{2}:\d{2})(?::\d{2})?)?$/);
+  if (jalaliMatch) {
+    return jalaliMatch[2] ? `${jalaliMatch[1]} ${jalaliMatch[2]}` : jalaliMatch[1];
   }
+  return formatJalaliDateTime(text, false);
 }
 
 export const TX_TYPE_LABELS = {
@@ -299,14 +296,14 @@ export async function openItemDetailModal(itemId) {
     const item = data.item;
     const headerTitle = modal.querySelector(".modal-header .card-title");
     if (headerTitle) {
-      headerTitle.textContent = `${item.item_code} — ${item.model}`;
+      headerTitle.textContent = item.model ? `${item.item_code} — ${item.model}` : item.item_code;
     }
 
     const txRows = (item.transactions || [])
       .map(
         (t) => `
       <tr>
-        <td class="text-muted">${escapeHtml(fmtDate(t.created_at))}</td>
+        <td class="text-muted ltr">${escapeHtml(fmtDate(t.created_at_jalali || t.created_at))}</td>
         <td>${txTypeBadge(t.transaction_type)}</td>
         <td class="text-right num"><strong>${fmtQty(t.quantity)}</strong></td>
         <td class="text-right num ltr">${fmtQty(t.stock_before)} → <strong>${fmtQty(t.stock_after)}</strong></td>

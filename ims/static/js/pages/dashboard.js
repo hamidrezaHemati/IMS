@@ -70,10 +70,10 @@ function renderRecentMovements(list) {
             <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
               ${txTypeBadge(tx.transaction_type)}
               <strong class="mono">${escapeHtml(tx.item_code)}</strong>
-              <span class="text-secondary">${escapeHtml(tx.model)}</span>
+              ${tx.model ? `<span class="text-secondary">${escapeHtml(tx.model)}</span>` : ""}
             </div>
             <div class="text-muted" style="font-size:0.78rem;margin-top:2px;">
-              ${escapeHtml(tx.user_name)} • ${escapeHtml(fmtDate(tx.created_at))}
+              ${escapeHtml(tx.user_name)} • <span class="ltr">${escapeHtml(fmtDate(tx.created_at_jalali || tx.created_at))}</span>
             </div>
           </div>
           <div class="text-right num" style="flex-shrink:0;">
@@ -100,7 +100,7 @@ function renderRecentItems(items) {
           (it) => `
         <div data-item-id="${it.id}" class="recent-item-row" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:10px;padding-bottom:8px;border-bottom:1px solid var(--border-color);">
           <div style="min-width:0;">
-            <div><strong class="mono">${escapeHtml(it.item_code)}</strong> — ${escapeHtml(it.model)}</div>
+            <div><strong class="mono">${escapeHtml(it.item_code)}</strong>${it.model ? ` — ${escapeHtml(it.model)}` : ""}</div>
             <div class="text-muted" style="font-size:0.78rem;">${escapeHtml(it.category_path)} • محل: ${escapeHtml(it.location)}</div>
           </div>
           <div>${stockBadge(it.quantity)}</div>

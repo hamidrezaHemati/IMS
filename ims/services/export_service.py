@@ -4,6 +4,7 @@ from decimal import Decimal
 from io import BytesIO
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill
+from ims.jalali import format_jalali_datetime
 from ims.services.item_service import list_items
 from ims.services.transaction_service import list_transactions
 
@@ -63,6 +64,7 @@ def export_inventory_xlsx(filters: dict) -> bytes:
         "Total Value (WAC) (Toman)",
         "Total Value (Last Purchase) (Rial)",
         "Total Value (Last Purchase) (Toman)",
+        "Updated At (Jalali)",
         "Description",
     ]
     ws.append(headers)
@@ -97,7 +99,7 @@ def export_inventory_xlsx(filters: dict) -> bytes:
             item["item_code"],
             item["category_name"] or "",
             item["subcategory_name"] or "",
-            item["model"],
+            item["model"] or "",
             item["size"] or "",
             item["mounting_type"] or "",
             item["material"] or "",
@@ -112,6 +114,8 @@ def export_inventory_xlsx(filters: dict) -> bytes:
             _to_toman(val_wac),
             float(val_lpc) if val_lpc is not None else None,
             _to_toman(val_lpc),
+            item.get("inventory_updated_at_jalali")
+            or format_jalali_datetime(item.get("inventory_updated_at")),
             item["description"] or "",
         ])
 
@@ -145,6 +149,7 @@ def export_inventory_xlsx(filters: dict) -> bytes:
         float(wac_toman_sub) if wac_missing == 0 else f"INCOMPLETE ({wac_toman_sub}; {wac_missing} missing)",
         float(lpc_subtotal) if lpc_missing == 0 else f"INCOMPLETE ({lpc_subtotal}; {lpc_missing} missing)",
         float(lpc_toman_sub) if lpc_missing == 0 else f"INCOMPLETE ({lpc_toman_sub}; {lpc_missing} missing)",
+        "",
         "Unit: Rial (IRR) & Toman (Rial / 10)",
     ])
     for c_idx in range(1, len(headers) + 1):
@@ -177,7 +182,7 @@ def export_transactions_xlsx(filters: dict) -> bytes:
 
     headers = [
         "Transaction ID",
-        "Timestamp (UTC)",
+        "Timestamp (Jalali)",
         "Type",
         "Item Code",
         "Category",
@@ -199,7 +204,7 @@ def export_transactions_xlsx(filters: dict) -> bytes:
     _style_header(ws, 1, len(headers))
 
     for tx in rows:
-        created_str = tx["created_at"].strftime("%Y-%m-%d %H:%M:%S") if tx["created_at"] else ""
+        created_str = tx.get("created_at_jalali") or format_jalali_datetime(tx.get("created_at"))
         ws.append([
             tx["id"],
             created_str,
@@ -207,7 +212,7 @@ def export_transactions_xlsx(filters: dict) -> bytes:
             tx["item_code"],
             tx["category_name"] or "",
             tx["subcategory_name"] or "",
-            tx["model"],
+            tx["model"] or "",
             tx["user_name"],
             int(tx["quantity"]),
             int(tx["stock_before"]),
