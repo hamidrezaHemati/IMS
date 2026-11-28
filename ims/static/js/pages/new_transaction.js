@@ -33,7 +33,7 @@ let catalogTotal = 0;
 let isLoadingCatalog = false;
 
 function isOutgoingType(txType) {
-  return txType === "OUT" || txType === "ADJUSTMENT_OUT";
+  return txType === "OUT" || txType === "ADJUSTMENT_OUT" || txType === "SCRAP_OUT";
 }
 
 function isPriceRequired(txType) {
@@ -59,6 +59,9 @@ function updatePricingHint() {
   } else if (txType === "ADJUSTMENT_IN") {
     hint.textContent =
       "وارد کردن قیمت واحد (به ریال) اختیاری است. در صورت خالی بودن، اسنپ‌شات از قیمت میانگین فعلی استفاده می‌کند.";
+  } else if (txType === "SCRAP_OUT") {
+    hint.textContent =
+      "خروج ضایعات (قطعات خراب): تعداد ثبت‌شده از موجودی انبار کسر می‌شود؛ ورود قیمت غیرفعال است و ارزش ریالی ضایعات از قیمت میانگین فعلی محاسبه می‌شود.";
   } else {
     hint.textContent =
       "تراکنش خروجی: ورود قیمت غیرفعال است و هزینه واحد از قیمت میانگین فعلی (به ریال) محاسبه می‌شود.";

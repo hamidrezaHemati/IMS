@@ -424,7 +424,8 @@ def create_tables(cur):
                     'PURCHASE_IN',
                     'OUT',
                     'ADJUSTMENT_IN',
-                    'ADJUSTMENT_OUT'
+                    'ADJUSTMENT_OUT',
+                    'SCRAP_OUT'
                 )
             ),
 
@@ -448,7 +449,7 @@ def create_tables(cur):
                 )
                 OR
                 (
-                    transaction_type IN ('OUT', 'ADJUSTMENT_OUT')
+                    transaction_type IN ('OUT', 'ADJUSTMENT_OUT', 'SCRAP_OUT')
                     AND stock_after = stock_before - quantity
                 )
             ),
@@ -459,7 +460,7 @@ def create_tables(cur):
                 OR
                 (transaction_type IN ('OPENING', 'ADJUSTMENT_IN'))
                 OR
-                (transaction_type IN ('OUT', 'ADJUSTMENT_OUT') AND price IS NULL)
+                (transaction_type IN ('OUT', 'ADJUSTMENT_OUT', 'SCRAP_OUT') AND price IS NULL)
             )
     );
 
@@ -683,7 +684,8 @@ def create_triggers(cur):
             'PURCHASE_IN',
             'OUT',
             'ADJUSTMENT_IN',
-            'ADJUSTMENT_OUT'
+            'ADJUSTMENT_OUT',
+            'SCRAP_OUT'
         ) THEN
             RAISE EXCEPTION 'Unsupported transaction type: %',
                 NEW.transaction_type;
@@ -693,10 +695,10 @@ def create_triggers(cur):
             RAISE EXCEPTION 'price is required for PURCHASE_IN.';
         END IF;
 
-        IF NEW.transaction_type IN ('OUT', 'ADJUSTMENT_OUT')
+        IF NEW.transaction_type IN ('OUT', 'ADJUSTMENT_OUT', 'SCRAP_OUT')
            AND NEW.price IS NOT NULL THEN
             RAISE EXCEPTION
-                'price must be NULL for OUT and ADJUSTMENT_OUT; cost is taken from WAC.';
+                'price must be NULL for OUT, ADJUSTMENT_OUT, and SCRAP_OUT; cost is taken from WAC.';
         END IF;
 
         IF NEW.price IS NOT NULL AND NEW.price < 0 THEN
@@ -819,7 +821,7 @@ def create_triggers(cur):
         END IF;
 
         /*
-         * OUT and ADJUSTMENT_OUT do not change either cost field.
+         * OUT, ADJUSTMENT_OUT, and SCRAP_OUT do not change either cost field.
          * If stock reaches zero, WAC is deliberately retained.
          */
         UPDATE inventory

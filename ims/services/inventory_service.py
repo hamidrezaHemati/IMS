@@ -52,7 +52,7 @@ def get_dashboard_summary() -> dict:
                     WHERE transaction_type IN ('OPENING', 'PURCHASE_IN', 'ADJUSTMENT_IN')
                 )::INT AS incoming_tx_count,
                 COUNT(*) FILTER (
-                    WHERE transaction_type IN ('OUT', 'ADJUSTMENT_OUT')
+                    WHERE transaction_type IN ('OUT', 'ADJUSTMENT_OUT', 'SCRAP_OUT')
                 )::INT AS outgoing_tx_count,
                 COUNT(*)::INT AS total_tx_count
             FROM inventory_transaction;

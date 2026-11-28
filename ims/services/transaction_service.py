@@ -26,10 +26,11 @@ ALLOWED_TRANSACTION_TYPES = (
     "OUT",
     "ADJUSTMENT_IN",
     "ADJUSTMENT_OUT",
+    "SCRAP_OUT",
 )
 
 INCOMING_TYPES = ("OPENING", "PURCHASE_IN", "ADJUSTMENT_IN")
-OUTGOING_TYPES = ("OUT", "ADJUSTMENT_OUT")
+OUTGOING_TYPES = ("OUT", "ADJUSTMENT_OUT", "SCRAP_OUT")
 
 
 def _validate_tx_inputs(tx_type: str, quantity_raw, price_raw) -> tuple[str, int, Decimal | None]:
@@ -47,7 +48,7 @@ def _validate_tx_inputs(tx_type: str, quantity_raw, price_raw) -> tuple[str, int
 
     if clean_type in OUTGOING_TYPES and price is not None:
         raise AppError(
-            "Price must not be specified for OUT or ADJUSTMENT_OUT transactions; cost comes from weighted average cost."
+            "Price must not be specified for OUT, ADJUSTMENT_OUT, or SCRAP_OUT transactions; cost comes from weighted average cost."
         )
 
     return clean_type, quantity, price

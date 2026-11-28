@@ -628,9 +628,36 @@ class IMSEndToEndTestCase(unittest.TestCase):
         self.assertAlmostEqual(out_data["transaction"]["unit_cost_snapshot"], 3.0)
         self.assertAlmostEqual(out_data["transaction"]["transaction_cost_snapshot"], 90.0)
 
+        # SCRAP_OUT with explicit price must fail
+        scrap_with_price = self.client.post(
+            "/api/transactions",
+            json={"item_id": item_id, "transaction_type": "SCRAP_OUT", "quantity": 5, "price": 1.0},
+        )
+        self.assertEqual(scrap_with_price.status_code, 400)
+
+        # Valid SCRAP_OUT 5 -> stock 115, preserves WAC=3.0 & LPC=5.0, records snapshot cost 15.0
+        scrap_ok = self.client.post(
+            "/api/transactions",
+            json={
+                "item_id": item_id,
+                "transaction_type": "SCRAP_OUT",
+                "quantity": 5,
+                "description": "خرابی هنگام مونتاژ",
+            },
+        )
+        self.assertEqual(scrap_ok.status_code, 201, scrap_ok.get_data(as_text=True))
+        scrap_data = scrap_ok.get_json()
+        self.assertEqual(scrap_data["transaction"]["transaction_type"], "SCRAP_OUT")
+        self.assertEqual(scrap_data["transaction"]["stock_before"], 120)
+        self.assertEqual(scrap_data["transaction"]["stock_after"], 115)
+        self.assertAlmostEqual(scrap_data["transaction"]["unit_cost_snapshot"], 3.0)
+        self.assertAlmostEqual(scrap_data["transaction"]["transaction_cost_snapshot"], 15.0)
+        self.assertAlmostEqual(scrap_data["inventory"]["weighted_avg_cost"], 3.0)
+        self.assertAlmostEqual(scrap_data["inventory"]["last_purchase_cost"], 5.0)
+
         adj_out = self.client.post(
             "/api/transactions",
-            json={"item_id": item_id, "transaction_type": "ADJUSTMENT_OUT", "quantity": 100},
+            json={"item_id": item_id, "transaction_type": "ADJUSTMENT_OUT", "quantity": 95},
         )
         self.assertEqual(adj_out.status_code, 201)
         self.assertEqual(adj_out.get_json()["inventory"]["current_quantity"], 20)
@@ -815,7 +842,7 @@ class IMSEndToEndTestCase(unittest.TestCase):
         self.assertIn("Total Value (WAC) (Toman)", elec_headers)
         self.assertIn("Updated At (Jalali)", elec_headers)
 
-        # Transaction Excel export
+        # Transaction Excel export (OPENING + SCRAP_OUT filter)
         exp_tx = self.client.get("/api/export/transactions?transaction_type=OPENING")
         self.assertEqual(exp_tx.status_code, 200)
         wb_tx = load_workbook(BytesIO(exp_tx.data))
@@ -825,6 +852,15 @@ class IMSEndToEndTestCase(unittest.TestCase):
         self.assertIn("Timestamp (Jalali)", tx_headers)
         self.assertNotIn("Timestamp (UTC)", tx_headers)
         self.assertRegex(str(wb_tx.active.cell(row=2, column=2).value), r"^\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}$")
+
+        exp_scrap = self.client.get("/api/export/transactions?transaction_type=SCRAP_OUT")
+        self.assertEqual(exp_scrap.status_code, 200)
+        wb_scrap = load_workbook(BytesIO(exp_scrap.data))
+        ws_scrap = wb_scrap.active
+        self.assertGreaterEqual(ws_scrap.max_row, 2)
+        type_col_idx = [c.value for c in ws_scrap[1]].index("Type") + 1
+        scrap_types = [ws_scrap.cell(row=r, column=type_col_idx).value for r in range(2, ws_scrap.max_row + 1)]
+        self.assertTrue(all(t == "SCRAP_OUT" for t in scrap_types))
 
         # All UI routes load cleanly with HTTP 200 for admin
         for route in ("/", "/inventory", "/transactions/new", "/bom", "/transactions", "/reports", "/excel", "/users", "/settings"):
@@ -844,10 +880,17 @@ class IMSEndToEndTestCase(unittest.TestCase):
             "tx-catalog-scroll",
             "tx-match-count",
             "t-item-type",
+            "SCRAP_OUT",
+            "خروج ضایعات",
         ):
             self.assertIn(token, new_tx_html)
         for removed in ("t-desc", "t-min-qty", "t-max-qty", "tx-catalog-pagination"):
             self.assertNotIn(removed, new_tx_html)
+
+        tx_hist_html = self.client.get("/transactions").get_data(as_text=True)
+        self.assertIn('value="SCRAP_OUT"', tx_hist_html)
+        self.assertIn("خروج ضایعات", tx_hist_html)
+        self.assertIn("PURCHASE_IN,OUT,ADJUSTMENT_IN,ADJUSTMENT_OUT,SCRAP_OUT", tx_hist_html)
 
         reports_html = self.client.get("/reports").get_data(as_text=True)
         for token in ("ex-item-type", "ex-spec-filters", "ex-preview-tbody", "scroll-table-8"):
@@ -1002,12 +1045,18 @@ class IMSEndToEndTestCase(unittest.TestCase):
         self.assertEqual(bom_resp.get_json()["availability_summary"]["available"], 1)
 
         non_open_resp = self.client.get(
-            "/api/transactions?transaction_type=PURCHASE_IN,OUT,ADJUSTMENT_IN,ADJUSTMENT_OUT"
+            "/api/transactions?transaction_type=PURCHASE_IN,OUT,ADJUSTMENT_IN,ADJUSTMENT_OUT,SCRAP_OUT"
         )
         self.assertEqual(non_open_resp.status_code, 200)
         non_open_data = non_open_resp.get_json()
         self.assertGreaterEqual(non_open_data["total"], 1)
         self.assertTrue(all(t["transaction_type"] != "OPENING" for t in non_open_data["transactions"]))
+
+        scrap_filter_resp = self.client.get("/api/transactions?transaction_type=SCRAP_OUT")
+        self.assertEqual(scrap_filter_resp.status_code, 200)
+        scrap_filter_data = scrap_filter_resp.get_json()
+        self.assertGreaterEqual(scrap_filter_data["total"], 1)
+        self.assertTrue(all(t["transaction_type"] == "SCRAP_OUT" for t in scrap_filter_data["transactions"]))
 
     def test_10_multilingual_excel_categories_and_category_spec_type(self):
         self.login_admin()

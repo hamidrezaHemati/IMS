@@ -166,6 +166,7 @@ export const TX_TYPE_LABELS = {
   OPENING: "موجودی اولیه",
   PURCHASE_IN: "خرید (ورود)",
   OUT: "خروج کالا",
+  SCRAP_OUT: "خروج ضایعات",
   ADJUSTMENT_IN: "تعدیل افزایشی",
   ADJUSTMENT_OUT: "تعدیل کاهشی",
 };
@@ -180,6 +181,7 @@ export function txTypeBadge(txType) {
     PURCHASE_IN: "badge-success",
     ADJUSTMENT_IN: "badge-success",
     OUT: "badge-warning",
+    SCRAP_OUT: "badge-danger",
     ADJUSTMENT_OUT: "badge-danger",
   };
   const cls = map[txType] || "badge-neutral";

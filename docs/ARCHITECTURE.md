@@ -229,7 +229,7 @@ erDiagram
 ## 3. Core Business Logic
 
 ### Shared Inventory Ledger & Multiple Item Types
-- **Shared Stock & Transactions**: All 6 item types share a single `item` identity, a single `inventory` row per item, and a single immutable `inventory_transaction` ledger (`OPENING`, `PURCHASE_IN`, `ADJUSTMENT_IN`, `OUT`, `ADJUSTMENT_OUT`). Mixed carts containing both Electronic and Mechanical components execute in one `/api/transactions/bulk` batch.
+- **Shared Stock & Transactions**: All 6 item types share a single `item` identity, a single `inventory` row per item, and a single immutable `inventory_transaction` ledger (`OPENING`, `PURCHASE_IN`, `ADJUSTMENT_IN`, `OUT`, `ADJUSTMENT_OUT`, `SCRAP_OUT`). Mixed carts containing both Electronic and Mechanical components execute in one `/api/transactions/bulk` batch.
 - **Dimensions & Measurements**: Mechanical dimensions (`diameter`, `length`, `inner_diameter`, `outer_diameter`, `cross_section`) are always stored as strict numeric `NUMERIC(10,3)` values representing millimeters (`mm`). String labels like `M5` or `10mm` are rejected; `o_ring.cross_section` is read-only / PostgreSQL-generated.
 - **Currency**: All monetary inputs and database values (`price`, `weighted_avg_cost`, `last_purchase_cost`, snapshots) are denominated in Iranian Rial (IRR); the UI displays both Rial and Toman equivalents (`1 Toman = 10 Rials`), using `قیمت میانگین`.
 
