@@ -2,8 +2,21 @@
 
 import psycopg2
 from ims.db import AppError, get_db, translate_pg_error
-from ims.item_specs import get_spec_definition, resolve_spec_type
-from ims.utils import clean_text, parse_optional_int
+from ims.item_specs import (
+    SPEC_DEFINITIONS,
+    get_spec_definition,
+    is_electronic_root_name,
+    resolve_spec_type,
+)
+from ims.utils import clean_text, normalize_persian_text, parse_optional_int
+
+
+def _norm_cat_name(val) -> str | None:
+    return normalize_persian_text(clean_text(val, max_len=100))
+
+
+def _norm_cat_key(val: str | None) -> str:
+    return (normalize_persian_text(val) or "").strip().lower()
 
 
 _CATEGORY_TREE_SQL = """
@@ -12,6 +25,7 @@ WITH RECURSIVE cat_tree AS (
         c.id,
         c.parent_id,
         c.name,
+        c.spec_type,
         c.description,
         NULL::VARCHAR(100) AS parent_name,
         c.id AS root_id,
@@ -27,6 +41,7 @@ WITH RECURSIVE cat_tree AS (
         c.id,
         c.parent_id,
         c.name,
+        c.spec_type,
         c.description,
         ct.name AS parent_name,
         ct.root_id,
@@ -65,6 +80,7 @@ SELECT
     ct.id,
     ct.parent_id,
     ct.name,
+    ct.spec_type,
     ct.description,
     ct.parent_name,
     ct.root_id,
@@ -96,6 +112,7 @@ def list_categories() -> list[dict]:
                 row.get("root_name"),
                 row.get("name"),
                 is_leaf=is_leaf,
+                explicit_spec_type=row.get("spec_type"),
             )
             rows.append(row)
         return rows
@@ -172,9 +189,48 @@ def _check_duplicate_sibling(cur, name: str, parent_id: int | None, exclude_id: 
         )
 
 
+def _resolve_root_name_for_parent(cur, parent_id: int) -> str | None:
+    cur.execute(
+        """
+        WITH RECURSIVE anc AS (
+            SELECT id, parent_id, name
+              FROM category
+             WHERE id = %s
+            UNION ALL
+            SELECT p.id, p.parent_id, p.name
+              FROM category p
+              JOIN anc a ON a.parent_id = p.id
+        )
+        SELECT name
+          FROM anc
+         WHERE parent_id IS NULL
+         LIMIT 1;
+        """,
+        (parent_id,),
+    )
+    row = cur.fetchone()
+    return row["name"] if row else None
+
+
+def _resolve_category_spec_input(
+    cur,
+    parent_id: int | None,
+    name: str,
+    raw_spec_type,
+) -> str | None:
+    if parent_id is None:
+        return None
+    cleaned = clean_text(raw_spec_type, max_len=30)
+    if cleaned:
+        get_spec_definition(cleaned)
+        return cleaned
+    root_name = _resolve_root_name_for_parent(cur, parent_id)
+    return resolve_spec_type(root_name, name, is_leaf=True)
+
+
 def create_category(data: dict) -> dict:
     """Create a category or subcategory."""
-    name = clean_text(data.get("name"), max_len=100)
+    name = _norm_cat_name(data.get("name"))
     if not name:
         raise AppError("Category name is required.")
 
@@ -186,13 +242,14 @@ def create_category(data: dict) -> dict:
         with db.transaction() as cur:
             _ensure_parent_exists(cur, parent_id)
             _check_duplicate_sibling(cur, name, parent_id)
+            spec_type = _resolve_category_spec_input(cur, parent_id, name, data.get("spec_type"))
             cur.execute(
                 """
-                INSERT INTO category (parent_id, name, description)
-                VALUES (%s, %s, %s)
+                INSERT INTO category (parent_id, name, spec_type, description)
+                VALUES (%s, %s, %s, %s)
                 RETURNING id;
                 """,
-                (parent_id, name, description),
+                (parent_id, name, spec_type, description),
             )
             cat_id = cur.fetchone()["id"]
     except psycopg2.Error as exc:
@@ -202,11 +259,11 @@ def create_category(data: dict) -> dict:
 
 
 def update_category(category_id: int, data: dict) -> dict:
-    """Update a category's name, parent, or description.
+    """Update a category's name, parent, spec_type, or description.
 
-    Cycle detection is enforced by PostgreSQL trigger trg_validate_category_hierarchy.
+    Cycle and populated-category checks are enforced both here and in PostgreSQL triggers.
     """
-    name = clean_text(data.get("name"), max_len=100)
+    name = _norm_cat_name(data.get("name"))
     if not name:
         raise AppError("Category name is required.")
 
@@ -216,21 +273,49 @@ def update_category(category_id: int, data: dict) -> dict:
     db = get_db()
     try:
         with db.transaction() as cur:
-            cur.execute("SELECT id FROM category WHERE id = %s;", (category_id,))
-            if not cur.fetchone():
+            cur.execute(
+                "SELECT id, parent_id, spec_type FROM category WHERE id = %s FOR UPDATE;",
+                (category_id,),
+            )
+            existing = cur.fetchone()
+            if not existing:
                 raise AppError("Category not found.", status_code=404)
 
             _ensure_parent_exists(cur, parent_id)
             _check_duplicate_sibling(cur, name, parent_id, exclude_id=category_id)
+
+            if parent_id is None:
+                spec_type = None
+            elif "spec_type" in data:
+                cleaned_spec = clean_text(data.get("spec_type"), max_len=30)
+                if cleaned_spec:
+                    get_spec_definition(cleaned_spec)
+                    spec_type = cleaned_spec
+                else:
+                    spec_type = None
+            else:
+                spec_type = existing["spec_type"] or resolve_spec_type(
+                    _resolve_root_name_for_parent(cur, parent_id), name, is_leaf=True
+                )
+
+            if spec_type != existing["spec_type"]:
+                cur.execute("SELECT 1 FROM item WHERE category_id = %s LIMIT 1;", (category_id,))
+                if cur.fetchone():
+                    raise AppError(
+                        "Cannot change spec_type of a category that already contains items.",
+                        status_code=409,
+                    )
+
             cur.execute(
                 """
                 UPDATE category
                    SET parent_id = %s,
                        name = %s,
+                       spec_type = %s,
                        description = %s
                  WHERE id = %s;
                 """,
-                (parent_id, name, description, category_id),
+                (parent_id, name, spec_type, description, category_id),
             )
     except psycopg2.Error as exc:
         raise translate_pg_error(exc) from exc
@@ -254,24 +339,28 @@ def resolve_or_create_category_pair(
     cur,
     category_name: str,
     sub_category_name: str | None = None,
+    spec_type: str | None = None,
 ) -> tuple[int, bool, bool]:
     """Find or create a (category, optional sub_category) pair inside an open cursor.
 
     Returns (resolved_category_id, created_parent, created_child).
     """
-    clean_parent = clean_text(category_name, max_len=100)
+    clean_parent = _norm_cat_name(category_name)
     if not clean_parent:
         raise AppError("Main category name is required.")
+
+    if spec_type is not None:
+        get_spec_definition(spec_type)
 
     created_parent = False
     created_child = False
 
     cur.execute(
         """
-        SELECT id
+        SELECT id, name
           FROM category
          WHERE parent_id IS NULL
-           AND LOWER(TRIM(name)) = LOWER(TRIM(%s))
+           AND REPLACE(REPLACE(LOWER(TRIM(name)), 'ي', 'ی'), 'ك', 'ک') = LOWER(TRIM(%s))
          ORDER BY id
          LIMIT 1;
         """,
@@ -280,28 +369,30 @@ def resolve_or_create_category_pair(
     row = cur.fetchone()
     if row:
         parent_id = row["id"]
+        parent_actual_name = row["name"]
     else:
         cur.execute(
             """
-            INSERT INTO category (parent_id, name)
-            VALUES (NULL, %s)
+            INSERT INTO category (parent_id, name, spec_type)
+            VALUES (NULL, %s, NULL)
             RETURNING id;
             """,
             (clean_parent,),
         )
         parent_id = cur.fetchone()["id"]
+        parent_actual_name = clean_parent
         created_parent = True
 
-    clean_sub = clean_text(sub_category_name, max_len=100)
+    clean_sub = _norm_cat_name(sub_category_name)
     if not clean_sub:
         return parent_id, created_parent, created_child
 
     cur.execute(
         """
-        SELECT id
+        SELECT id, name, spec_type
           FROM category
          WHERE parent_id = %s
-           AND LOWER(TRIM(name)) = LOWER(TRIM(%s))
+           AND REPLACE(REPLACE(LOWER(TRIM(name)), 'ي', 'ی'), 'ك', 'ک') = LOWER(TRIM(%s))
          ORDER BY id
          LIMIT 1;
         """,
@@ -309,19 +400,70 @@ def resolve_or_create_category_pair(
     )
     sub_row = cur.fetchone()
     if sub_row:
-        return sub_row["id"], created_parent, created_child
+        sub_id = sub_row["id"]
+        cur.execute("SELECT 1 FROM category WHERE parent_id = %s LIMIT 1;", (sub_id,))
+        if cur.fetchone():
+            raise AppError(
+                f"Subcategory '{clean_sub}' under '{parent_actual_name}' has child categories and cannot directly hold items.",
+                status_code=409,
+            )
+
+        effective_spec = sub_row["spec_type"] or resolve_spec_type(
+            parent_actual_name, sub_row["name"], is_leaf=True
+        )
+        if spec_type is not None and effective_spec is not None and effective_spec != spec_type:
+            raise AppError(
+                f"Subcategory '{clean_sub}' under '{parent_actual_name}' is already assigned to '{effective_spec}' and cannot be used for '{spec_type}'.",
+                status_code=409,
+            )
+        if sub_row["spec_type"] is None and spec_type is not None:
+            cur.execute("UPDATE category SET spec_type = %s WHERE id = %s;", (spec_type, sub_id))
+
+        return sub_id, created_parent, created_child
 
     cur.execute(
         """
-        INSERT INTO category (parent_id, name)
-        VALUES (%s, %s)
+        INSERT INTO category (parent_id, name, spec_type)
+        VALUES (%s, %s, %s)
         RETURNING id;
         """,
-        (parent_id, clean_sub),
+        (parent_id, clean_sub, spec_type),
     )
     sub_id = cur.fetchone()["id"]
     created_child = True
     return sub_id, created_parent, created_child
+
+
+def resolve_category_plan_names(
+    spec_type: str,
+    category_name: str | None = None,
+    sub_category_name: str | None = None,
+) -> tuple[str, str]:
+    """Resolve user-provided (category, sub_category) names in any language for spec_type."""
+    defn = get_spec_definition(spec_type)
+    clean_cat = _norm_cat_name(category_name)
+    clean_sub = _norm_cat_name(sub_category_name)
+
+    if clean_cat and clean_sub:
+        return clean_cat, clean_sub
+
+    if clean_cat:
+        if spec_type == "electronic_item":
+            if is_electronic_root_name(clean_cat):
+                raise AppError(
+                    "Missing sub_category: electronic items require a subcategory (e.g. Resistor, Capacitor, مقاومت)."
+                )
+            return defn["root_category"], clean_cat
+        return clean_cat, defn["default_subcategory"]
+
+    if clean_sub:
+        return defn["root_category"], clean_sub
+
+    if spec_type == "electronic_item":
+        raise AppError(
+            "Missing category/sub_category: electronic items require a subcategory (e.g. Resistor, Capacitor, مقاومت)."
+        )
+    return defn["root_category"], defn["default_subcategory"]
 
 
 def resolve_category_for_spec_type(
@@ -330,50 +472,15 @@ def resolve_category_for_spec_type(
     category_name: str | None = None,
     sub_category_name: str | None = None,
 ) -> tuple[int, bool, bool]:
-    """Resolve and validate a leaf category ID strictly compatible with spec_type."""
-    defn = get_spec_definition(spec_type)
-    clean_cat = clean_text(category_name, max_len=100)
-    clean_sub = clean_text(sub_category_name, max_len=100)
-
-    if spec_type == "electronic_item":
-        if clean_cat and clean_cat.strip().lower() in ("electronics", "electronic"):
-            clean_cat = "Electronic"
-
-        if clean_sub:
-            if clean_cat and clean_cat.strip().lower() != "electronic":
-                raise AppError(
-                    f"Electronic import requires root category 'Electronic' (found '{clean_cat}')."
-                )
-            resolved_sub = clean_sub
-        elif clean_cat and clean_cat.strip().lower() != "electronic":
-            if resolve_spec_type("Mechanical", clean_cat, is_leaf=True) is not None or clean_cat.strip().lower() == "mechanical":
-                raise AppError(
-                    f"Category '{clean_cat}' belongs to Mechanical components and cannot be imported as Electronic Items."
-                )
-            resolved_sub = clean_cat
-        else:
-            raise AppError(
-                "Electronic items require a sub_category (e.g. Resistor, Capacitor, Microcontroller)."
-            )
-
-        return resolve_or_create_category_pair(cur, "Electronic", resolved_sub)
-
-    expected_leaf = defn["default_subcategory"]
-    if clean_cat:
-        cat_key = clean_cat.strip().lower()
-        if cat_key == "electronic" or cat_key == "electronics":
-            raise AppError(
-                f"Category '{clean_cat}' belongs to Electronic components and cannot be imported as {defn['label_en']}."
-            )
-        if cat_key != "mechanical" and resolve_spec_type("Mechanical", clean_cat, is_leaf=True) != spec_type:
-            raise AppError(
-                f"Category '{clean_cat}' is incompatible with {defn['label_en']} import (expected Mechanical)."
-            )
-
-    if clean_sub:
-        if resolve_spec_type("Mechanical", clean_sub, is_leaf=True) != spec_type:
-            raise AppError(
-                f"Subcategory '{clean_sub}' is incompatible with {defn['label_en']} import (expected '{expected_leaf}')."
-            )
-
-    return resolve_or_create_category_pair(cur, "Mechanical", expected_leaf)
+    """Resolve or create a leaf category ID labeled as written and bound to spec_type."""
+    resolved_cat, resolved_sub = resolve_category_plan_names(
+        spec_type,
+        category_name,
+        sub_category_name,
+    )
+    return resolve_or_create_category_pair(
+        cur,
+        resolved_cat,
+        resolved_sub,
+        spec_type=spec_type,
+    )

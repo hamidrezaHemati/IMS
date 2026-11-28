@@ -30,6 +30,7 @@ WITH RECURSIVE cat_info AS (
         c.id,
         c.parent_id,
         c.name AS leaf_name,
+        c.spec_type AS category_spec_type,
         c.id AS root_id,
         c.name AS root_name,
         c.name AS category_name,
@@ -45,6 +46,7 @@ WITH RECURSIVE cat_info AS (
         c.id,
         c.parent_id,
         c.name AS leaf_name,
+        c.spec_type AS category_spec_type,
         ci.root_id,
         ci.root_name,
         ci.root_name AS category_name,
@@ -179,7 +181,9 @@ def hydrate_spec_fields(row: dict) -> dict:
             row.get("category_name"),
             row.get("subcategory_name"),
             is_leaf=row.get("subcategory_name") is not None,
+            explicit_spec_type=row.get("category_spec_type"),
         )
+    row.pop("category_spec_type", None)
 
     specs: dict = {}
     if item_type and item_type in _SPEC_PREFIX_AND_FIELDS:
@@ -481,6 +485,7 @@ def list_items(filters: dict, paginate: bool = True) -> dict:
                 ci.category_name,
                 ci.subcategory_name,
                 ci.category_path,
+                ci.category_spec_type,
                 i.location,
                 i.description,
                 i.created_at,
@@ -542,6 +547,7 @@ def get_item_detail(item_id: int, tx_limit: int = 50) -> dict:
                 ci.category_name,
                 ci.subcategory_name,
                 ci.category_path,
+                ci.category_spec_type,
                 i.location,
                 i.description,
                 i.created_at,
@@ -619,6 +625,7 @@ def resolve_category_spec_for_write(cur, category_id: int) -> str:
             ci.id,
             ci.root_name,
             ci.leaf_name,
+            ci.category_spec_type,
             ci.parent_id,
             EXISTS (SELECT 1 FROM category ch WHERE ch.parent_id = ci.id) AS has_children
           FROM cat_info ci
@@ -631,7 +638,12 @@ def resolve_category_spec_for_write(cur, category_id: int) -> str:
         raise AppError("Selected category does not exist.", status_code=404)
 
     is_leaf = bool(row["parent_id"] is not None and not row["has_children"])
-    spec_type = resolve_spec_type(row["root_name"], row["leaf_name"], is_leaf=is_leaf)
+    spec_type = resolve_spec_type(
+        row["root_name"],
+        row["leaf_name"],
+        is_leaf=is_leaf,
+        explicit_spec_type=row["category_spec_type"],
+    )
     if not spec_type:
         raise AppError(
             "Items must belong to a valid leaf component category (Electronic or Mechanical subcategory)."

@@ -406,11 +406,48 @@ export function inferFilterModeFromSelects({
     if (sub && sub.spec_type) return sub.spec_type;
   }
   if (parentCatId) {
+    const leafSpecs = Array.from(
+      new Set(
+        categories
+          .filter((c) => String(c.root_id) === String(parentCatId) && c.is_leaf && c.spec_type)
+          .map((c) => c.spec_type)
+      )
+    );
+    if (leafSpecs.length === 1) return leafSpecs[0];
+    if (leafSpecs.length > 1) {
+      return leafSpecs.includes("electronic_item") ? "" : "mechanical_any";
+    }
     const parent = categories.find((c) => String(c.id) === String(parentCatId));
     if (parent) {
-      const n = String(parent.name || "").trim().toLowerCase();
-      if (n === "electronic") return "electronic_item";
-      if (n === "mechanical") return "mechanical_any";
+      const n = String(parent.name || "")
+        .replace(/ي/g, "ی")
+        .replace(/ك/g, "ک")
+        .trim()
+        .toLowerCase();
+      if (
+        [
+          "electronic",
+          "electronics",
+          "الکترونیک",
+          "الکترونیکی",
+          "قطعات الکترونیک",
+          "قطعات الکترونیکی",
+        ].includes(n)
+      ) {
+        return "electronic_item";
+      }
+      if (
+        [
+          "mechanical",
+          "mechanics",
+          "مکانیک",
+          "مکانیکی",
+          "قطعات مکانیک",
+          "قطعات مکانیکی",
+        ].includes(n)
+      ) {
+        return "mechanical_any";
+      }
     }
   }
   return "";

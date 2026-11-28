@@ -52,6 +52,12 @@ function translateImportMessage(msg) {
   if (/Specifications updated; stock and transactions unchanged/i.test(text)) {
     return "مشخصات به‌روزرسانی شد؛ موجودی و تراکنش‌ها بدون تغییر ماندند.";
   }
+  if (/already assigned to/i.test(text)) {
+    return "این زیردسته از قبل به نوع قطعه دیگری اختصاص دارد و نمی‌تواند هم‌زمان برای این نوع قطعه استفاده شود.";
+  }
+  if (/already has items directly assigned/i.test(text)) {
+    return "این دسته‌بندی مستقیماً دارای قطعه است و نمی‌تواند زیردسته بپذیرد.";
+  }
   if (/quantity must be/i.test(text)) return "مقدار تعداد باید یک عدد صحیح نامنفی باشد.";
   if (/price must be/i.test(text)) return "قیمت باید یک عدد معتبر و نامنفی باشد.";
   return translateServerError(text);
@@ -94,10 +100,10 @@ function renderImportTypeCards() {
 
       const typeHint =
         key === "o_ring"
-          ? "سطح مقطع به صورت خودکار توسط پایگاه‌داده از (قطر خارجی − قطر داخلی) ÷ ۲ محاسبه می‌شود."
+          ? "نام دسته/زیردسته می‌تواند فارسی یا انگلیسی باشد (مثلاً مکانیک > اورینگ). سطح مقطع به صورت خودکار محاسبه می‌شود."
           : key === "electronic_item"
-          ? "ستون زیردسته (Resistor، Capacitor و...) الزامی است؛ سایز پکیج در ستون package_size ثبت می‌شود."
-          : `ابعاد مکانیکی باید به صورت عدد خالص بر حسب میلی‌متر (mm) وارد شوند (بدون پسوند mm یا M5).`;
+          ? "ستون زیردسته با نام دلخواه فارسی یا انگلیسی (مثلاً قطعات الکترونیک > مقاومت یا Electronic > Resistor) به‌صورت خودکار ایجاد می‌شود؛ سایز پکیج در ستون package_size ثبت می‌گردد."
+          : "نام دسته‌بندی و زیردسته مطابق فایل اکسل (فارسی، انگلیسی یا ترکیبی؛ مثلاً مکانیک > پیچ یا Mechanical > Screw) ایجاد می‌شود. ابعاد باید عدد خالص بر حسب میلی‌متر (mm) باشند.";
 
       return `
       <article class="card import-type-card ${activeItemType === key ? "is-active-import" : ""}" data-import-card="${escapeHtml(key)}">

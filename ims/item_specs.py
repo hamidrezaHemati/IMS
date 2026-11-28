@@ -18,21 +18,53 @@ SPEC_TYPES_ORDER = (
     "o_ring",
 )
 
+_ELECTRONIC_ROOT_KEYS = {
+    "electronic",
+    "electronics",
+    "الکترونیک",
+    "الکترونیکی",
+    "قطعات الکترونیک",
+    "قطعات الکترونیکی",
+}
+
+_MECHANICAL_ROOT_KEYS = {
+    "mechanical",
+    "mechanics",
+    "مکانیک",
+    "مکانیکی",
+    "قطعات مکانیک",
+    "قطعات مکانیکی",
+}
+
 _MECHANICAL_LEAF_MAP = {
     "spacer": "spacer",
     "spacers": "spacer",
+    "اسپیسر": "spacer",
+    "اسپیسرها": "spacer",
     "screw": "screw",
     "screws": "screw",
+    "پیچ": "screw",
+    "پیچ‌ها": "screw",
+    "پیچ ها": "screw",
     "nut": "nut",
     "nuts": "nut",
+    "مهره": "nut",
+    "مهره‌ها": "nut",
+    "مهره ها": "nut",
     "washer": "washer",
     "washers": "washer",
+    "واشر": "washer",
+    "واشرها": "washer",
     "o-ring": "o_ring",
     "o_ring": "o_ring",
     "oring": "o_ring",
     "o-rings": "o_ring",
     "o_rings": "o_ring",
     "orings": "o_ring",
+    "اورینگ": "o_ring",
+    "او-رینگ": "o_ring",
+    "اورینگ‌ها": "o_ring",
+    "اورینگ ها": "o_ring",
 }
 
 _MATERIAL_LABELS_FA = {
@@ -52,32 +84,79 @@ _MATERIAL_SYNONYMS = {
     "stainless steel": "STAINLESS_STEEL",
     "stainless": "STAINLESS_STEEL",
     "ss": "STAINLESS_STEEL",
+    "استیل": "STAINLESS_STEEL",
+    "استیل ضدزنگ": "STAINLESS_STEEL",
+    "استیل ضد زنگ": "STAINLESS_STEEL",
+    "استنلس": "STAINLESS_STEEL",
+    "استنلس استیل": "STAINLESS_STEEL",
     "plastic": "PLASTIC",
     "nylon": "PLASTIC",
+    "پلاستیک": "PLASTIC",
+    "پلاستیکی": "PLASTIC",
+    "نایلون": "PLASTIC",
+    "نایلونی": "PLASTIC",
     "black": "BLACK",
+    "مشکی": "BLACK",
+    "سیاه": "BLACK",
+    "خشکه": "BLACK",
     "white": "WHITE",
+    "سفید": "WHITE",
+    "گالوانیزه": "WHITE",
     "iron": "IRON",
     "steel": "IRON",
+    "آهن": "IRON",
+    "آهنی": "IRON",
+    "اهن": "IRON",
+    "اهنی": "IRON",
+    "فولاد": "IRON",
+    "فولادی": "IRON",
     "paper": "PAPER",
+    "کاغذی": "PAPER",
+    "کاغذ": "PAPER",
+    "فیبری": "PAPER",
+    "فیبر": "PAPER",
     "nbr": "NBR",
+    "لاستیک": "NBR",
+    "لاستیکی": "NBR",
+    "ان بی آر": "NBR",
     "viton": "VITON",
+    "وایتون": "VITON",
+    "ویتون": "VITON",
     "silicone": "SILICONE",
+    "سیلیکون": "SILICONE",
+    "سیلیکونی": "SILICONE",
 }
 
 _SPACER_TYPE_SYNONYMS = {
     "f": "F",
     "female-male": "F",
     "male-female": "F",
+    "نری مادگی": "F",
+    "نری-مادگی": "F",
+    "مادگی نری": "F",
+    "مادگی-نری": "F",
     "h": "H",
     "hex": "H",
     "female-female": "H",
+    "دو سر مادگی": "H",
+    "دوسر مادگی": "H",
+    "مادگی مادگی": "H",
+    "مادگی-مادگی": "H",
+    "شش گوش": "H",
+    "شش‌گوش": "H",
 }
 
 _WASHER_TYPE_SYNONYMS = {
     "plain": "PLAIN",
     "flat": "PLAIN",
+    "تخت": "PLAIN",
+    "ساده": "PLAIN",
+    "معمولی": "PLAIN",
     "spring": "SPRING",
     "lock": "SPRING",
+    "فنری": "SPRING",
+    "قفل شو": "SPRING",
+    "قفل‌شو": "SPRING",
 }
 
 _SCREW_HEAD_SYNONYMS = {
@@ -464,19 +543,34 @@ def get_spec_definition(spec_type: str) -> dict:
     return SPEC_DEFINITIONS[spec_type]
 
 
+def is_electronic_root_name(name: str | None) -> bool:
+    norm = normalize_persian_text(clean_text(name))
+    return bool(norm and norm.lower() in _ELECTRONIC_ROOT_KEYS)
+
+
+def is_mechanical_root_name(name: str | None) -> bool:
+    norm = normalize_persian_text(clean_text(name))
+    return bool(norm and norm.lower() in _MECHANICAL_ROOT_KEYS)
+
+
 def resolve_spec_type(
     root_name: str | None,
     leaf_name: str | None,
     is_leaf: bool = True,
+    explicit_spec_type: str | None = None,
 ) -> str | None:
-    """Map category hierarchy names dynamically to one of the 6 spec table keys."""
-    if not is_leaf or not root_name:
+    """Map category metadata/hierarchy names dynamically to one of the 6 spec table keys."""
+    if not is_leaf:
         return None
-    root_key = root_name.strip().lower()
-    leaf_key = (leaf_name or "").strip().lower()
-    if root_key == "electronic":
+    if explicit_spec_type in SPEC_DEFINITIONS:
+        return explicit_spec_type
+    if not root_name:
+        return None
+    root_key = (normalize_persian_text(clean_text(root_name)) or "").lower()
+    leaf_key = (normalize_persian_text(clean_text(leaf_name)) or "").lower()
+    if root_key in _ELECTRONIC_ROOT_KEYS:
         return "electronic_item"
-    if root_key == "mechanical":
+    if root_key in _MECHANICAL_ROOT_KEYS:
         return _MECHANICAL_LEAF_MAP.get(leaf_key)
     return None
 

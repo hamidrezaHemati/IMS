@@ -43,6 +43,7 @@ _FK_CONSTRAINT_MESSAGES = {
 
 _CHECK_CONSTRAINT_MESSAGES = {
     "chk_category_not_own_parent": "A category cannot be its own parent.",
+    "chk_category_spec_type": "Invalid category specification type.",
     "chk_electronic_mounting_type": "Mounting type must be either SMD or DIP.",
     "chk_spacer_diameter": "Spacer diameter (mm) must be greater than zero.",
     "chk_spacer_length": "Spacer length (mm) must be greater than zero.",

@@ -1025,6 +1025,126 @@ class IMSEndToEndTestCase(unittest.TestCase):
         self.assertGreaterEqual(non_open_data["total"], 1)
         self.assertTrue(all(t["transaction_type"] != "OPENING" for t in non_open_data["transactions"]))
 
+    def test_10_multilingual_excel_categories_and_category_spec_type(self):
+        self.login_admin()
+
+        # 1) Import Screws using Persian ("مکانیک" > "پیچ"), mixed ("Mechanical" > "پیچ آلنی"),
+        # and lowercase English ("mechanical" > "screw" reusing seeded Mechanical > Screw).
+        fa_screw_xlsx = _make_xlsx_bytes(
+            ["کد قطعه", "دسته بندی", "زیر دسته", "diameter", "length", "material", "head_type", "drive_type", "محل نگهداری", "تعداد", "قیمت"],
+            [
+                ["FA-SCR-1", "مکانیک", "پیچ", 4, 12, "استیل ضدزنگ", "آلنی", "آلنی", "P-1", 50, 15000],
+                ["MIX-SCR-1", "Mechanical", "پیچ آلنی", 3, 10, "مشکی", "آلنی", "آلنی", "P-2", 40, 10000],
+                ["EN-SCR-1", "mechanical", "screw", 5, 20, "سفید", "قارچی", "چهارسو", "P-3", 30, 18000],
+            ],
+        )
+        conf_scr = self._upload_and_import_type("screw", fa_screw_xlsx, "fa_screws.xlsx")
+        self.assertEqual(conf_scr["summary"]["created_items"], 3, conf_scr)
+        self.assertEqual(conf_scr["summary"]["failed_rows"], 0)
+
+        fa_scr_item = self.client.get("/api/items?item_code=FA-SCR-1").get_json()["items"][0]
+        self.assertEqual(fa_scr_item["category_path"], "مکانیک > پیچ")
+        self.assertEqual(fa_scr_item["item_type"], "screw")
+        self.assertEqual(fa_scr_item["specs"]["material"], "STAINLESS_STEEL")
+
+        mix_scr_item = self.client.get("/api/items?item_code=MIX-SCR-1").get_json()["items"][0]
+        self.assertEqual(mix_scr_item["category_path"], "Mechanical > پیچ آلنی")
+        self.assertEqual(mix_scr_item["item_type"], "screw")
+        self.assertEqual(mix_scr_item["specs"]["material"], "BLACK")
+
+        # 2) Import Washers using Persian ("مکانیک" > "واشر") and Persian enum values
+        fa_washer_xlsx = _make_xlsx_bytes(
+            ["item_code", "category", "sub_category", "diameter", "washer_type", "material", "location", "quantity", "price"],
+            [["FA-WSH-1", "مکانیک", "واشر", 5, "فنری", "استیل", "P-4", 120, 4500]],
+        )
+        conf_wsh = self._upload_and_import_type("washer", fa_washer_xlsx, "fa_washers.xlsx")
+        self.assertEqual(conf_wsh["summary"]["created_items"], 1, conf_wsh)
+        wsh_item = self.client.get("/api/items?item_code=FA-WSH-1").get_json()["items"][0]
+        self.assertEqual(wsh_item["category_path"], "مکانیک > واشر")
+        self.assertEqual(wsh_item["specs"]["washer_type"], "SPRING")
+        self.assertEqual(wsh_item["specs"]["material"], "STAINLESS_STEEL")
+
+        # 3) Import Electronic items using Persian ("قطعات الکترونیکی" > "مقاومت")
+        fa_elec_xlsx = _make_xlsx_bytes(
+            ["item_code", "category", "sub_category", "model", "package_size", "mounting_type", "location", "quantity", "price"],
+            [["FA-RES-1", "قطعات الکترونیکی", "مقاومت", "10K 1%", "0603", "SMD", "E-FA", 200, 1200]],
+        )
+        conf_elec = self._upload_and_import_type("electronic_item", fa_elec_xlsx, "fa_elec.xlsx")
+        self.assertEqual(conf_elec["summary"]["created_items"], 1, conf_elec)
+        res_item = self.client.get("/api/items?item_code=FA-RES-1").get_json()["items"][0]
+        self.assertEqual(res_item["category_path"], "قطعات الکترونیکی > مقاومت")
+        self.assertEqual(res_item["item_type"], "electronic_item")
+
+        # 4) Reject reusing existing "مکانیک > پیچ" (spec_type='screw') inside a Nut Excel import & SQL insert
+        conflict_nut_xlsx = _make_xlsx_bytes(
+            ["item_code", "category", "sub_category", "diameter", "material", "location", "quantity", "price"],
+            [["CONFLICT-NUT-1", "مکانیک", "پیچ", 4, "IRON", "P-5", 10, 5000]],
+        )
+        up_conflict = self.client.post(
+            "/api/import/upload",
+            data={"file": (conflict_nut_xlsx, "conflict_nut.xlsx"), "item_type": "nut"},
+            content_type="multipart/form-data",
+        ).get_json()
+        prev_conflict = self.client.post(
+            "/api/import/preview",
+            json={
+                "upload_id": up_conflict["upload_id"],
+                "item_type": "nut",
+                "sheet_name": up_conflict["selected_sheet"],
+                "column_mapping": up_conflict["suggested_mapping"],
+            },
+        ).get_json()
+        self.assertEqual(prev_conflict["summary"]["invalid_rows"], 1)
+        self.assertIn("already assigned to 'screw'", prev_conflict["rows"][0]["errors"][0])
+
+        db = self.app.extensions["db"]
+        with db.connection() as conn:
+            with conn.cursor() as cur:
+                with self.assertRaises(psycopg2.errors.RaiseException):
+                    cur.execute(
+                        "INSERT INTO nut (item_id, diameter, material) VALUES (%s, 4, 'IRON');",
+                        (fa_scr_item["id"],),
+                    )
+                conn.rollback()
+
+        # 5) Manual category creation with explicit Persian name + spec_type, safe rename of populated category,
+        # and blocking spec_type change on populated category.
+        custom_root = self.client.post("/api/categories", json={"name": "تجهیزات دستی"}).get_json()["category"]
+        custom_leaf_resp = self.client.post(
+            "/api/categories",
+            json={"name": "اورینگ سیلیکونی", "parent_id": custom_root["id"], "spec_type": "o_ring"},
+        )
+        self.assertEqual(custom_leaf_resp.status_code, 201)
+        custom_leaf = custom_leaf_resp.get_json()["category"]
+        self.assertEqual(custom_leaf["spec_type"], "o_ring")
+
+        custom_org = self.client.post(
+            "/api/items",
+            json={
+                "item_code": "FA-ORG-MANUAL",
+                "category_id": custom_leaf["id"],
+                "location": "P-6",
+                "specs": {"inner_diameter": 6, "outer_diameter": 10, "material": "سیلیکون"},
+            },
+        )
+        self.assertEqual(custom_org.status_code, 201)
+        self.assertAlmostEqual(float(custom_org.get_json()["item"]["specs"]["cross_section"]), 2.0)
+
+        # Renaming populated leaf while keeping spec_type succeeds
+        rename_ok = self.client.put(
+            f"/api/categories/{custom_leaf['id']}",
+            json={"name": "اورینگ نسوز", "parent_id": custom_root["id"], "spec_type": "o_ring"},
+        )
+        self.assertEqual(rename_ok.status_code, 200)
+        self.assertEqual(rename_ok.get_json()["category"]["name"], "اورینگ نسوز")
+
+        # Changing spec_type of populated leaf is rejected
+        change_spec_bad = self.client.put(
+            f"/api/categories/{custom_leaf['id']}",
+            json={"name": "اورینگ نسوز", "parent_id": custom_root["id"], "spec_type": "nut"},
+        )
+        self.assertEqual(change_spec_bad.status_code, 409)
+
 
 if __name__ == "__main__":
     unittest.main()

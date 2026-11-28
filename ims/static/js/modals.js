@@ -9,12 +9,13 @@ import { closeModal, escapeHtml, openModal, toast } from "./ui.js";
 /**
  * Open modal to create or edit a category / subcategory.
  */
-export function openCategoryModal({
+export async function openCategoryModal({
   allCategories = [],
   existing = null,
   defaultParentId = null,
   onSaved = null,
 }) {
+  const schema = await getSpecSchema();
   const selectedParent = existing ? existing.parent_id : defaultParentId;
   const parentOptions = [
     `<option value="">بدون والد (دسته‌بندی اصلی)</option>`,
@@ -28,6 +29,19 @@ export function openCategoryModal({
       ),
   ].join("");
 
+  const specOptions = [
+    `<option value="">تشخیص خودکار از نام یا دسته والد (پیش‌فرض)</option>`,
+    ...(schema?.order || []).map((key) => {
+      const def = schema.types[key];
+      const sel = existing && existing.spec_type === key ? "selected" : "";
+      return `<option value="${escapeHtml(key)}" ${sel}>${escapeHtml(def.label_fa)} (${escapeHtml(
+        def.label_en
+      )})</option>`;
+    }),
+  ].join("");
+
+  const hasAssignedItems = Boolean(existing && (existing.direct_item_count || 0) > 0);
+
   const modal = openModal({
     title: existing ? "ویرایش دسته‌بندی" : "دسته‌بندی جدید",
     bodyHtml: `
@@ -39,6 +53,17 @@ export function openCategoryModal({
         <div class="field">
           <label for="m-cat-parent">دسته والد</label>
           <select id="m-cat-parent" class="select">${parentOptions}</select>
+        </div>
+        <div id="m-cat-spec-wrap" class="field ${selectedParent ? "" : "hidden"}">
+          <label for="m-cat-spec-type">نوع مشخصات فنی قطعه (برای زیردسته‌ها)</label>
+          <select id="m-cat-spec-type" class="select" ${hasAssignedItems ? "disabled" : ""}>${specOptions}</select>
+          <span class="text-muted" style="font-size:0.78rem;">
+            ${
+              hasAssignedItems
+                ? "به دلیل وجود قطعه در این زیردسته، تغییر نوع مشخصات فنی مجاز نیست (تغییر نام بلامانع است)."
+                : "برای نام‌های دلخواه فارسی یا انگلیسی می‌توانید نوع جدول مشخصات (الکترونیک، پیچ، مهره و...) را مشخص کنید."
+            }
+          </span>
         </div>
         <div class="field">
           <label for="m-cat-desc">توضیحات</label>
@@ -52,13 +77,24 @@ export function openCategoryModal({
     `,
   });
 
+  const parentSel = document.getElementById("m-cat-parent");
+  const specWrap = document.getElementById("m-cat-spec-wrap");
+  const specSel = document.getElementById("m-cat-spec-type");
+  parentSel.addEventListener("change", () => {
+    const hasParent = Boolean(parentSel.value);
+    specWrap.classList.toggle("hidden", !hasParent);
+  });
+
   modal.querySelector("#cat-modal-form").addEventListener("submit", async (e) => {
     e.preventDefault();
     const payload = {
       name: document.getElementById("m-cat-name").value,
-      parent_id: document.getElementById("m-cat-parent").value || null,
+      parent_id: parentSel.value || null,
       description: document.getElementById("m-cat-desc").value,
     };
+    if (parentSel.value && !hasAssignedItems && specSel.value) {
+      payload.spec_type = specSel.value;
+    }
     try {
       let resp;
       if (existing) {

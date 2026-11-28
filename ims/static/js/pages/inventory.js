@@ -55,7 +55,7 @@ function renderCategoryTable() {
         : "";
       return `
       <tr>
-        <td>${indent}${prefix}<strong>${escapeHtml(c.name)}</strong></td>
+        <td>${indent}${prefix}<strong>${escapeHtml(c.name)}</strong> ${c.spec_type ? itemTypeBadge(c.spec_type) : ""}</td>
         <td class="text-secondary">${escapeHtml(c.parent_name || "— (دسته اصلی)")}</td>
         <td class="text-right num">${fmtQty(c.direct_item_count)}</td>
         <td class="text-right num">${fmtQty(c.subtree_item_count)}</td>

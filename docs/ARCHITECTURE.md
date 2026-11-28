@@ -106,8 +106,8 @@ erDiagram
         BIGINT id PK
         BIGINT parent_id FK
         VARCHAR name
+        VARCHAR spec_type
         TEXT description
-        TIMESTAMPTZ created_at
     }
 
     item {
@@ -221,7 +221,9 @@ erDiagram
 | `trg_prepare_inventory_transaction` | `BEFORE INSERT ON inventory_transaction` | `fn_prepare_inventory_transaction()` | Validates type/qty/price, locks `inventory` via `SELECT ... FOR UPDATE`, blocks negative stock, sets `stock_before`, `stock_after`, `unit_cost_snapshot`, `created_at`, and `created_at_jalali` (via `fn_to_jalali_timestamp()`). |
 | `trg_apply_inventory_transaction` | `AFTER INSERT ON inventory_transaction` | `fn_apply_inventory_transaction()` | Updates `inventory.quantity`, recomputes `weighted_avg_cost`, updates `last_purchase_cost` on `PURCHASE_IN` or priced `OPENING`, and refreshes `updated_at`. |
 | `trg_prevent_transaction_update` / `trg_prevent_transaction_delete` | `BEFORE UPDATE` / `BEFORE DELETE ON inventory_transaction` | `fn_prevent_transaction_mutation()` | Raises an exception so historical transactions remain strictly immutable. |
-| `trg_validate_category_hierarchy` | `BEFORE INSERT OR UPDATE OF parent_id ON category` | `fn_validate_category_hierarchy()` | Uses a recursive CTE over ancestors to reject circular hierarchies (`A -> B -> A`) and invalid nesting around mechanical/populated nodes. |
+| `trg_validate_category_hierarchy` | `BEFORE INSERT OR UPDATE OF parent_id, spec_type ON category` | `fn_validate_category_hierarchy()` | Rejects circular hierarchies (`A -> B -> A`), invalid nesting under populated categories, and changing `spec_type` or moving a populated leaf category to root. |
+
+- **`category.spec_type` & Multilingual Categories**: Every leaf subcategory stores an explicit nullable `spec_type` (`electronic_item`, `spacer`, `screw`, `nut`, `washer`, `o_ring`). During Excel import or manual category creation, category and subcategory names can be written in Persian, English, or mixed scripts (e.g. `مکانیک > پیچ` or `Mechanical > Screw`) and are automatically created and bound to that flow's `spec_type`. `fn_resolve_category_spec_type()` prioritizes `category.spec_type` and falls back to normalized English/Persian hierarchy names.
 
 ---
 

@@ -71,6 +71,12 @@ export function translateServerError(msg) {
   if (/incompatible specifications/i.test(text) || /not match item category type/i.test(text)) {
     return "مشخصات فنی واردشده با دسته‌بندی انتخابی هم‌خوانی ندارد.";
   }
+  if (/Cannot change spec_type/i.test(text)) {
+    return "تغییر نوع مشخصات فنی زیردسته‌ای که دارای قطعه است مجاز نیست.";
+  }
+  if (/already assigned to/i.test(text)) {
+    return "این زیردسته به نوع قطعه دیگری اختصاص داده شده است.";
+  }
   if (/valid leaf component category/i.test(text)) {
     return "قطعه باید در یکی از زیردسته‌های معتبر (الکترونیک یا مکانیک) ثبت شود.";
   }

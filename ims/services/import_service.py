@@ -15,23 +15,27 @@ from ims.item_specs import (
     resolve_spec_type,
     validate_specs,
 )
-from ims.services.category_service import resolve_category_for_spec_type
+from ims.services.category_service import (
+    resolve_category_for_spec_type,
+    resolve_category_plan_names,
+)
 from ims.services.item_service import upsert_spec_row
 from ims.utils import (
     clean_text,
+    normalize_persian_text,
     parse_nonnegative_int,
     parse_optional_price,
     resolve_uploaded_xlsx,
 )
 
 COMMON_FIELD_ALIASES = {
-    "item_code": ("item_code", "item code", "code", "sku", "part_number", "part number"),
-    "category": ("category", "main_category", "main category"),
-    "sub_category": ("sub_category", "subcategory", "sub category", "type_name", "component_type"),
-    "location": ("location", "drawer", "drawer_number", "bin", "shelf"),
-    "quantity": ("quantity", "qty", "stock", "initial_quantity", "opening_qty"),
-    "price": ("price", "unit_price", "unit price", "cost", "unit_cost", "unit cost"),
-    "description": ("description", "desc", "notes", "note"),
+    "item_code": ("item_code", "item code", "code", "sku", "part_number", "part number", "کد قطعه", "کد"),
+    "category": ("category", "main_category", "main category", "دسته بندی", "دسته‌بندی", "دسته بندی اصلی", "دسته‌بندی اصلی", "گروه"),
+    "sub_category": ("sub_category", "subcategory", "sub category", "type_name", "component_type", "زیر دسته", "زیردسته", "نوع قطعه"),
+    "location": ("location", "drawer", "drawer_number", "bin", "shelf", "محل نگهداری", "کشو", "موقعیت"),
+    "quantity": ("quantity", "qty", "stock", "initial_quantity", "opening_qty", "تعداد", "موجودی", "موجودی اولیه"),
+    "price": ("price", "unit_price", "unit price", "cost", "unit_cost", "unit cost", "قیمت", "قیمت واحد", "فی"),
+    "description": ("description", "desc", "notes", "note", "توضیحات", "شرح"),
 }
 
 ALLOWED_POLICIES = ("skip", "update_metadata")
@@ -68,13 +72,16 @@ def _build_type_fields_meta(item_type: str) -> list[dict]:
 
 
 def _suggest_mapping_for_type(headers: list[str], item_type: str) -> dict[str, str | None]:
-    normalized_headers = {h.strip().lower(): h for h in headers}
+    normalized_headers = {
+        (normalize_persian_text(h) or h).strip().lower(): h for h in headers
+    }
     mapping: dict[str, str | None] = {}
     for field in _build_type_fields_meta(item_type):
         matched = None
         for alias in field["aliases"]:
-            if alias in normalized_headers:
-                matched = normalized_headers[alias]
+            norm_alias = (normalize_persian_text(alias) or alias).strip().lower()
+            if norm_alias in normalized_headers:
+                matched = normalized_headers[norm_alias]
                 break
         mapping[field["key"]] = matched
     return mapping
@@ -258,13 +265,13 @@ def generate_import_template_xlsx(item_type: str) -> bytes:
             rule = "Optional unit cost in Iranian Rial (IRR)"
         elif k == "sub_category":
             rule = (
-                "Required subcategory under Electronic (e.g. Resistor, Capacitor, Microcontroller)"
+                "Required subcategory (Persian, English, or mixed — created automatically if new)"
                 if item_type == "electronic_item"
-                else f"Optional; must match '{defn['default_subcategory']}' if provided"
+                else f"Optional subcategory in any language (defaults to '{defn['default_subcategory']}' if omitted)"
             )
         elif k == "category":
             rule = (
-                f"Optional; must be '{defn['root_category']}' if provided"
+                f"Optional main category in any language (defaults to '{defn['root_category']}' if omitted)"
             )
         else:
             rule = f["label"]
@@ -335,60 +342,36 @@ def _policy_explanation(policy: str) -> str:
     )
 
 
+def _norm_cat_key(val: str | None) -> str:
+    return (normalize_persian_text(val) or "").strip().lower()
+
+
 def _validate_import_category_preview(
     item_type: str,
     category_name: str | None,
     sub_category_name: str | None,
 ) -> tuple[str, str]:
-    """Validate category/sub_category compatibility for item_type without touching DB."""
-    defn = get_spec_definition(item_type)
-    if item_type == "electronic_item":
-        root = category_name
-        if root and root.strip().lower() in ("electronics", "electronic"):
-            root = "Electronic"
-
-        if sub_category_name:
-            if root and root.strip().lower() != "electronic":
-                raise AppError(
-                    f"Electronic import requires root category 'Electronic' (found '{root}')."
-                )
-            return "Electronic", sub_category_name
-        if root and root.strip().lower() != "electronic":
-            if resolve_spec_type("Mechanical", root, is_leaf=True) is not None or root.strip().lower() == "mechanical":
-                raise AppError(
-                    f"Category '{root}' belongs to Mechanical components and cannot be imported as Electronic Items."
-                )
-            return "Electronic", root
-        raise AppError(
-            "Missing sub_category: electronic items require a subcategory (e.g. Resistor, Capacitor)."
-        )
-
-    expected_leaf = defn["default_subcategory"]
-    if category_name:
-        cat_key = category_name.strip().lower()
-        if cat_key in ("electronic", "electronics"):
-            raise AppError(
-                f"Category '{category_name}' belongs to Electronic components and cannot be imported as {defn['label_en']}."
-            )
-        if cat_key != "mechanical" and resolve_spec_type("Mechanical", category_name, is_leaf=True) != item_type:
-            raise AppError(
-                f"Category '{category_name}' is incompatible with {defn['label_en']} import."
-            )
-
-    if sub_category_name and resolve_spec_type("Mechanical", sub_category_name, is_leaf=True) != item_type:
-        raise AppError(
-            f"Subcategory '{sub_category_name}' is incompatible with {defn['label_en']} import (expected '{expected_leaf}')."
-        )
-
-    return "Mechanical", expected_leaf
+    """Resolve category/sub_category names for item_type in any language without touching DB."""
+    return resolve_category_plan_names(item_type, category_name, sub_category_name)
 
 
 def _load_existing_categories_map(cur) -> tuple[dict[str, dict], dict[tuple[int, str], dict]]:
-    cur.execute("SELECT id, parent_id, name FROM category;")
+    cur.execute(
+        """
+        SELECT
+            c.id,
+            c.parent_id,
+            c.name,
+            c.spec_type,
+            (SELECT COUNT(*)::INT FROM category ch WHERE ch.parent_id = c.id) AS child_count,
+            (SELECT COUNT(*)::INT FROM item it WHERE it.category_id = c.id) AS direct_item_count
+          FROM category c;
+        """
+    )
     roots: dict[str, dict] = {}
     children: dict[tuple[int, str], dict] = {}
     for row in cur.fetchall():
-        key = row["name"].strip().lower()
+        key = _norm_cat_key(row["name"])
         if row["parent_id"] is None:
             roots[key] = dict(row)
         else:
@@ -478,13 +461,13 @@ def preview_import(
             errors.append(f"item_code: {exc.message}")
 
         try:
-            raw_cat = clean_text(get_col("category"), max_len=100)
+            raw_cat = normalize_persian_text(clean_text(get_col("category"), max_len=100))
         except AppError as exc:
             raw_cat = None
             errors.append(f"category: {exc.message}")
 
         try:
-            raw_sub = clean_text(get_col("sub_category"), max_len=100)
+            raw_sub = normalize_persian_text(clean_text(get_col("sub_category"), max_len=100))
         except AppError as exc:
             raw_sub = None
             errors.append(f"sub_category: {exc.message}")
@@ -591,6 +574,31 @@ def preview_import(
         warnings = list(row["warnings"])
         existing_info = None
 
+        if row["category"] and not row["_missing_category"]:
+            p_key = _norm_cat_key(row["category"])
+            existing_root = existing_roots.get(p_key)
+            if existing_root:
+                if existing_root["direct_item_count"] > 0:
+                    errors.append(
+                        f"Category '{row['category']}' already has items directly assigned and cannot accept subcategories."
+                    )
+                elif row["sub_category"]:
+                    c_key = _norm_cat_key(row["sub_category"])
+                    existing_child = existing_children.get((existing_root["id"], c_key))
+                    if existing_child:
+                        if existing_child["child_count"] > 0:
+                            errors.append(
+                                f"Subcategory '{row['sub_category']}' under '{existing_root['name']}' has child categories and cannot directly hold items."
+                            )
+                        else:
+                            existing_sub_spec = existing_child["spec_type"] or resolve_spec_type(
+                                existing_root["name"], existing_child["name"], is_leaf=True
+                            )
+                            if existing_sub_spec is not None and existing_sub_spec != item_type:
+                                errors.append(
+                                    f"Subcategory '{row['sub_category']}' under '{existing_root['name']}' is already assigned to '{existing_sub_spec}' and cannot be used for '{item_type}'."
+                                )
+
         if code and code in duplicate_codes:
             dup_list = ", ".join(str(n) for n in code_occurrences[code])
             errors.append(f"Duplicate item_code '{code}' appears on Excel rows: {dup_list}.")
@@ -667,7 +675,7 @@ def preview_import(
     subcategories_to_create = 0
 
     for parent_name, child_name in category_pairs_to_apply:
-        p_key = parent_name.strip().lower()
+        p_key = _norm_cat_key(parent_name)
         if p_key not in category_plan_map:
             existing_root = existing_roots.get(p_key)
             if not existing_root:
@@ -680,7 +688,7 @@ def preview_import(
             }
 
         if child_name:
-            c_key = child_name.strip().lower()
+            c_key = _norm_cat_key(child_name)
             sub_map = category_plan_map[p_key]["subcategories"]
             if c_key not in sub_map:
                 parent_id = category_plan_map[p_key]["existing_id"]
@@ -769,8 +777,8 @@ def confirm_import(
         try:
             with db.transaction() as cur:
                 for row in applicable_rows:
-                    cat_key = row["category"].strip().lower()
-                    sub_key = (row["sub_category"] or "").strip().lower()
+                    cat_key = _norm_cat_key(row["category"])
+                    sub_key = _norm_cat_key(row["sub_category"])
                     pair_key = (cat_key, sub_key)
                     if pair_key in resolved_category_ids:
                         continue
@@ -819,8 +827,8 @@ def confirm_import(
             })
             continue
 
-        cat_key = row["category"].strip().lower()
-        sub_key = (row["sub_category"] or "").strip().lower()
+        cat_key = _norm_cat_key(row["category"])
+        sub_key = _norm_cat_key(row["sub_category"])
         category_id = resolved_category_ids[(cat_key, sub_key)]
 
         try:
