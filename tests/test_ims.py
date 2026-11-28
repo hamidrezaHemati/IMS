@@ -219,35 +219,17 @@ class IMSEndToEndTestCase(unittest.TestCase):
         self.client.post("/api/auth/logout")
         self.login_admin()
 
-    def test_02_seeded_categories_and_hierarchy_triggers(self):
+    def test_02_empty_initial_categories_and_hierarchy_triggers(self):
         self.login_admin()
         cats = self.client.get("/api/categories").get_json()["categories"]
-        paths = {c["full_path"]: c for c in cats}
+        self.assertEqual(cats, [])
 
-        for expected in (
-            "Electronic",
-            "Electronic > Resistor",
-            "Electronic > Capacitor",
-            "Electronic > Diode",
-            "Electronic > Relay",
-            "Electronic > Microcontroller",
-            "Electronic > Other electronic components",
-            "Mechanical",
-            "Mechanical > Spacer",
-            "Mechanical > Screw",
-            "Mechanical > Nut",
-            "Mechanical > Washer",
-            "Mechanical > O-Ring",
-        ):
-            self.assertIn(expected, paths)
+        # Cycle protection via PostgreSQL trigger on a custom category hierarchy
+        r_root = self.client.post("/api/categories", json={"name": "CustomRoot"})
+        self.assertEqual(r_root.status_code, 201)
+        root_id = r_root.get_json()["category"]["id"]
 
-        self.assertEqual(paths["Mechanical > Screw"]["spec_type"], "screw")
-        self.assertEqual(paths["Mechanical > O-Ring"]["spec_type"], "o_ring")
-        self.assertEqual(paths["Electronic > Resistor"]["spec_type"], "electronic_item")
-
-        # Cycle protection via PostgreSQL trigger on a custom Electronic subcategory tree
-        elec_id = paths["Electronic"]["id"]
-        r1 = self.client.post("/api/categories", json={"name": "CustomGroup", "parent_id": elec_id})
+        r1 = self.client.post("/api/categories", json={"name": "CustomGroup", "parent_id": root_id})
         self.assertEqual(r1.status_code, 201)
         grp_id = r1.get_json()["category"]["id"]
 
@@ -267,6 +249,8 @@ class IMSEndToEndTestCase(unittest.TestCase):
 
         self.assertEqual(self.client.delete(f"/api/categories/{leaf_id}").status_code, 200)
         self.assertEqual(self.client.delete(f"/api/categories/{grp_id}").status_code, 200)
+        self.assertEqual(self.client.delete(f"/api/categories/{root_id}").status_code, 200)
+        self.assertEqual(self.client.get("/api/categories").get_json()["categories"], [])
 
     def test_03_multi_type_templates_and_excel_imports(self):
         self.login_admin()
@@ -708,7 +692,7 @@ class IMSEndToEndTestCase(unittest.TestCase):
 
     def test_06_bom_calculator_mixed_read_only_and_incomplete_cost(self):
         self.login_admin()
-        cat_res = self._get_category_by_path("Electronic > Other electronic components")["id"]
+        cat_res = self._get_category_by_path("Electronic > Resistor")["id"]
 
         unpriced = self.client.post(
             "/api/items",

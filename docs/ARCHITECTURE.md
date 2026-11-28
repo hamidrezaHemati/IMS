@@ -207,9 +207,8 @@ erDiagram
     item ||--o{ inventory_transaction : "stock movements"
 ```
 
-### Seeded Categories (`seed_initial_data`)
-- **`Electronic`**: `Resistor`, `Capacitor`, `Diode`, `Relay`, `Microcontroller`, `Other electronic components`.
-- **`Mechanical`**: `Spacer`, `Screw`, `Nut`, `Washer`, `O-Ring`.
+### Initial Categories (`seed_initial_data`)
+- Fresh database initialization leaves the `category` table empty (seeding only `role`, `app_user`, and `user_role_assignment`). Categories and subcategories are created automatically from Excel initial imports in any language (Persian, English, or mixed) or created manually via `/inventory`, `/transactions/new`, or `/api/categories`.
 
 ### PostgreSQL Triggers (`database_init.py`)
 

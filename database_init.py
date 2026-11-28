@@ -1218,78 +1218,9 @@ def seed_initial_data(cursor):
         """
     )
 
-    # Seed the Electronic and Mechanical category hierarchy idempotently (no hardcoded IDs)
-    initial_categories = {
-        "Electronic": (
-            ("Resistor", "electronic_item"),
-            ("Capacitor", "electronic_item"),
-            ("Diode", "electronic_item"),
-            ("Relay", "electronic_item"),
-            ("Microcontroller", "electronic_item"),
-            ("Other electronic components", "electronic_item"),
-        ),
-        "Mechanical": (
-            ("Spacer", "spacer"),
-            ("Screw", "screw"),
-            ("Nut", "nut"),
-            ("Washer", "washer"),
-            ("O-Ring", "o_ring"),
-        ),
-    }
-
-    for root_name, children in initial_categories.items():
-        cursor.execute(
-            """
-            SELECT id
-              FROM category
-             WHERE parent_id IS NULL
-               AND LOWER(TRIM(name)) = LOWER(TRIM(%s))
-             ORDER BY id
-             LIMIT 1;
-            """,
-            (root_name,),
-        )
-        root_row = cursor.fetchone()
-        if root_row:
-            root_id = root_row[0]
-        else:
-            cursor.execute(
-                """
-                INSERT INTO category (parent_id, name, spec_type)
-                VALUES (NULL, %s, NULL)
-                RETURNING id;
-                """,
-                (root_name,),
-            )
-            root_id = cursor.fetchone()[0]
-
-        for child_name, child_spec_type in children:
-            cursor.execute(
-                """
-                SELECT id, spec_type
-                  FROM category
-                 WHERE parent_id = %s
-                   AND LOWER(TRIM(name)) = LOWER(TRIM(%s))
-                 ORDER BY id
-                 LIMIT 1;
-                """,
-                (root_id, child_name),
-            )
-            child_row = cursor.fetchone()
-            if child_row:
-                if child_row[1] is None:
-                    cursor.execute(
-                        "UPDATE category SET spec_type = %s WHERE id = %s;",
-                        (child_spec_type, child_row[0]),
-                    )
-            else:
-                cursor.execute(
-                    """
-                    INSERT INTO category (parent_id, name, spec_type)
-                    VALUES (%s, %s, %s);
-                    """,
-                    (root_id, child_name, child_spec_type),
-                )
+    # Categories intentionally remain empty on initial database creation so users
+    # can populate only their preferred Persian, English, or custom hierarchy via
+    # Excel imports or manual category creation without leftover unused categories.
 
 def main():
 
