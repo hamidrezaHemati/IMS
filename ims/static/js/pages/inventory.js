@@ -1,6 +1,14 @@
 import { apiFetch, buildQuery } from "../api.js";
 import { openCategoryModal, openItemModal } from "../modals.js";
 import {
+  collectDynamicFilterParams,
+  getSpecSchema,
+  inferFilterModeFromSelects,
+  itemTypeBadge,
+  renderDynamicFilterFields,
+  resetDynamicFilterFields,
+} from "../spec_ui.js";
+import {
   escapeHtml,
   fmtPriceHtml,
   fmtPriceInline,
@@ -47,7 +55,7 @@ function renderCategoryTable() {
         : "";
       return `
       <tr>
-        <td>${indent}${prefix}<strong>${escapeHtml(c.name)}</strong></td>
+        <td>${indent}${prefix}<strong>${escapeHtml(c.name)}</strong> ${c.spec_type ? itemTypeBadge(c.spec_type) : ""}</td>
         <td class="text-secondary">${escapeHtml(c.parent_name || "— (دسته اصلی)")}</td>
         <td class="text-right num">${fmtQty(c.direct_item_count)}</td>
         <td class="text-right num">${fmtQty(c.subtree_item_count)}</td>
@@ -109,6 +117,48 @@ async function deleteCategory(id) {
   }
 }
 
+function populateItemTypeSelect(selectEl, schema) {
+  if (!selectEl || !schema || !schema.order) return;
+  const current = selectEl.value;
+  selectEl.innerHTML = [
+    `<option value="">همه انواع</option>`,
+    ...schema.order.map((key) => {
+      const def = schema.types[key];
+      return `<option value="${escapeHtml(key)}">${escapeHtml(def.label_fa)}</option>`;
+    }),
+  ].join("");
+  if (current) selectEl.value = current;
+}
+
+function syncInventorySpecFilters() {
+  const itemTypeVal = document.getElementById("f-item-type").value;
+  const parentCatId = document.getElementById("f-parent-cat").value;
+  const subCatId = document.getElementById("f-sub-cat").value;
+  const specBox = document.getElementById("inv-spec-filters");
+  const specHint = document.getElementById("inv-spec-hint");
+  const secFilters = document.getElementById("inv-secondary-filters");
+  const moreBtn = document.getElementById("inv-more-filters-btn");
+
+  const filterMode = inferFilterModeFromSelects({
+    itemTypeVal,
+    parentCatId,
+    subCatId,
+    categories: allCategories,
+  });
+
+  renderDynamicFilterFields(specBox, filterMode, "inv-dyn");
+  if (specHint) {
+    specHint.classList.toggle("hidden", Boolean(filterMode));
+  }
+  if (filterMode && secFilters && secFilters.classList.contains("hidden")) {
+    secFilters.classList.remove("hidden");
+    if (moreBtn) {
+      moreBtn.textContent = "بستن فیلترهای بیشتر";
+      moreBtn.setAttribute("aria-expanded", "true");
+    }
+  }
+}
+
 function getFilterParams(page = 1) {
   const parentCat = document.getElementById("f-parent-cat").value;
   const subCat = document.getElementById("f-sub-cat").value;
@@ -116,18 +166,15 @@ function getFilterParams(page = 1) {
     page,
     page_size: 25,
     search: document.getElementById("f-search").value,
+    item_type: document.getElementById("f-item-type").value,
     category_id: subCat || parentCat,
     item_code: document.getElementById("f-item-code").value,
     location: document.getElementById("f-location").value,
     below_threshold: document.getElementById("f-below").value,
     zero_stock: document.getElementById("f-zero").checked ? "true" : "",
-    model: document.getElementById("f-model").value,
-    size: document.getElementById("f-size").value,
-    mounting_type: document.getElementById("f-mounting").value,
-    voltage: document.getElementById("f-voltage").value,
-    material: document.getElementById("f-material").value,
     sort_by: document.getElementById("f-sort").value,
     sort_dir: document.getElementById("f-sort-dir").value,
+    ...collectDynamicFilterParams(document.getElementById("inv-spec-filters")),
   };
 }
 
@@ -135,7 +182,7 @@ async function loadItems(page = 1) {
   currentPage = page;
   const tbody = document.getElementById("inv-tbody");
   const mobile = document.getElementById("inv-mobile");
-  tbody.innerHTML = `<tr><td colspan="10" class="empty-state">در حال بارگذاری...</td></tr>`;
+  tbody.innerHTML = `<tr><td colspan="9" class="empty-state">در حال بارگذاری...</td></tr>`;
   mobile.innerHTML = "";
 
   try {
@@ -143,7 +190,7 @@ async function loadItems(page = 1) {
     const items = data.items || [];
 
     if (!items.length) {
-      tbody.innerHTML = `<tr><td colspan="10" class="empty-state">هیچ قطعه‌ای مطابق فیلترها یافت نشد.</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="9" class="empty-state">هیچ قطعه‌ای مطابق فیلترها یافت نشد.</td></tr>`;
       mobile.innerHTML = `<div class="empty-state">هیچ قطعه‌ای مطابق فیلترها یافت نشد.</div>`;
     } else {
       tbody.innerHTML = items
@@ -151,10 +198,9 @@ async function loadItems(page = 1) {
           (it) => `
         <tr class="clickable" data-row-item="${it.id}">
           <td class="mono"><strong>${escapeHtml(it.item_code)}</strong></td>
+          <td>${itemTypeBadge(it.item_type, it.item_type_label_fa)}</td>
           <td>${escapeHtml(it.category_path)}</td>
-          <td>${escapeHtml(it.model || "—")}</td>
-          <td>${escapeHtml(it.size || "—")} / ${escapeHtml(it.mounting_type || "—")}</td>
-          <td>${escapeHtml(it.voltage || "—")} / ${escapeHtml(it.material || "—")}</td>
+          <td>${escapeHtml(it.spec_summary || it.display_name || "—")}</td>
           <td>${escapeHtml(it.location)}</td>
           <td class="text-right">${stockBadge(it.quantity)}</td>
           <td class="text-right num">${fmtPriceHtml(it.weighted_avg_cost, "نامشخص")}</td>
@@ -172,14 +218,22 @@ async function loadItems(page = 1) {
         <div class="mobile-item-card" data-row-item="${it.id}">
           <div class="mobile-item-head">
             <div>
-              <strong class="mono">${escapeHtml(it.item_code)}</strong>${it.model ? ` — <strong>${escapeHtml(it.model)}</strong>` : ""}
+              <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+                ${itemTypeBadge(it.item_type, it.item_type_label_fa)}
+                <strong class="mono">${escapeHtml(it.item_code)}</strong>
+              </div>
+              ${
+                it.display_name && it.display_name !== it.item_code
+                  ? `<div style="font-weight:600;margin-top:2px;">${escapeHtml(it.display_name)}</div>`
+                  : ""
+              }
               <div class="text-muted" style="font-size:0.78rem;">${escapeHtml(it.category_path)}</div>
             </div>
             ${stockBadge(it.quantity)}
           </div>
           <div class="mobile-item-meta">
             <div><span class="text-muted">محل:</span> ${escapeHtml(it.location)}</div>
-            <div><span class="text-muted">نصب/سایز:</span> ${escapeHtml(it.mounting_type || "—")} / ${escapeHtml(it.size || "—")}</div>
+            <div><span class="text-muted">مشخصات:</span> ${escapeHtml(it.spec_summary || "—")}</div>
             <div><span class="text-muted">قیمت میانگین:</span> <span class="num">${fmtPriceInline(it.weighted_avg_cost, "نامشخص")}</span></div>
             <div><span class="text-muted">آخرین خرید:</span> <span class="num">${fmtPriceInline(it.last_purchase_cost, "نامشخص")}</span></div>
           </div>
@@ -252,21 +306,31 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (e.key === "Enter") loadItems(1);
   });
   document.getElementById("inv-reset-btn").addEventListener("click", () => {
-    [
-      "f-search", "f-item-code", "f-location", "f-below",
-      "f-model", "f-size", "f-voltage", "f-material",
-    ].forEach((id) => { document.getElementById(id).value = ""; });
-    document.getElementById("f-mounting").value = "";
+    ["f-search", "f-item-code", "f-location", "f-below"].forEach((id) => {
+      document.getElementById(id).value = "";
+    });
+    document.getElementById("f-item-type").value = "";
     document.getElementById("f-parent-cat").value = "";
     document.getElementById("f-parent-cat").dispatchEvent(new Event("change"));
     document.getElementById("f-zero").checked = false;
     document.getElementById("f-sort").value = "item_code";
     document.getElementById("f-sort-dir").value = "asc";
+    resetDynamicFilterFields(document.getElementById("inv-spec-filters"));
+    syncInventorySpecFilters();
     loadItems(1);
   });
 
   try {
+    const schema = await getSpecSchema();
+    populateItemTypeSelect(document.getElementById("f-item-type"), schema);
     await refreshCategories();
+    ["f-item-type", "f-parent-cat", "f-sub-cat"].forEach((id) => {
+      document.getElementById(id).addEventListener("change", () => {
+        syncInventorySpecFilters();
+        loadItems(1);
+      });
+    });
+    syncInventorySpecFilters();
     await loadItems(1);
   } catch (err) {
     toast(err.message, "error");

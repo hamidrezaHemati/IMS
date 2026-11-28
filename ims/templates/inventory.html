@@ -34,7 +34,13 @@
     <div class="form-grid" style="margin-bottom:10px;">
       <div class="field">
         <label for="f-search">فیلتر کلی</label>
-        <input id="f-search" class="input" type="search" placeholder="کد، مدل، ولتاژ، محل نگهداری...">
+        <input id="f-search" class="input" type="search" placeholder="کد، مدل، ابعاد (mm)، محل نگهداری...">
+      </div>
+      <div class="field">
+        <label for="f-item-type">نوع قطعه</label>
+        <select id="f-item-type" class="select">
+          <option value="">همه انواع</option>
+        </select>
       </div>
       <div class="field">
         <label for="f-parent-cat">دسته‌بندی اصلی</label>
@@ -49,10 +55,6 @@
         <input id="f-item-code" class="input ltr" type="text">
       </div>
       <div class="field">
-        <label for="f-model">مدل / پارت نامبر / مقدار</label>
-        <input id="f-model" class="input" type="text">
-      </div>
-      <div class="field">
         <label for="f-location">محل نگهداری / کشو</label>
         <input id="f-location" class="input" type="text" placeholder="مثلاً E1">
       </div>
@@ -65,21 +67,12 @@
       </div>
     </div>
 
-    <!-- فیلترهای ثانویه -->
+    <!-- فیلترهای تخصصی پویا بر اساس نوع قطعه / دسته‌بندی -->
     <div id="inv-secondary-filters" class="hidden" style="margin-top:10px;padding-top:10px;border-top:1px dashed var(--border-color);">
-      <div class="form-grid">
-        <div class="field"><label for="f-size">سایز / پکیج</label><input id="f-size" class="input" type="text" placeholder="مثلاً 603 یا 1206"></div>
-        <div class="field">
-          <label for="f-mounting">نوع نصب</label>
-          <select id="f-mounting" class="select">
-            <option value="">همه</option>
-            <option value="SMD">SMD</option>
-            <option value="DIP">DIP</option>
-          </select>
-        </div>
-        <div class="field"><label for="f-voltage">ولتاژ</label><input id="f-voltage" class="input" type="text"></div>
-        <div class="field"><label for="f-material">متریال</label><input id="f-material" class="input" type="text"></div>
+      <div id="inv-spec-hint" class="alert alert-info" style="font-size:0.83rem;">
+        برای نمایش فیلترهای تخصصی هر نوع قطعه (مدل/ولتاژ الکترونیک یا ابعاد میلی‌متری پیچ، مهره، اسپیسر، واشر و اورینگ)، «نوع قطعه» یا «دسته‌بندی» را انتخاب کنید.
       </div>
+      <div id="inv-spec-filters" class="spec-filter-panel hidden"></div>
     </div>
 
     <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap;align-items:center;justify-content:space-between;">
@@ -90,7 +83,7 @@
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
         <select id="f-sort" class="select" style="width:auto;min-height:34px;" aria-label="مرتب‌سازی بر اساس">
           <option value="item_code">مرتب: کد قطعه</option>
-          <option value="model">مرتب: مدل</option>
+          <option value="model">مرتب: مدل / پارت نامبر</option>
           <option value="category">مرتب: دسته‌بندی</option>
           <option value="location">مرتب: محل نگهداری</option>
           <option value="quantity">مرتب: موجودی فعلی</option>
@@ -111,10 +104,9 @@
       <thead>
         <tr>
           <th>کد قطعه</th>
+          <th>نوع</th>
           <th>دسته‌بندی</th>
-          <th>مدل</th>
-          <th>سایز / نوع نصب</th>
-          <th>ولتاژ / متریال</th>
+          <th>مشخصات فنی</th>
           <th>محل نگهداری</th>
           <th class="text-right">موجودی</th>
           <th class="text-right">قیمت میانگین</th>
@@ -123,7 +115,7 @@
         </tr>
       </thead>
       <tbody id="inv-tbody">
-        <tr><td colspan="10" class="empty-state">در حال بارگذاری قطعات...</td></tr>
+        <tr><td colspan="9" class="empty-state">در حال بارگذاری قطعات...</td></tr>
       </tbody>
     </table>
   </div>

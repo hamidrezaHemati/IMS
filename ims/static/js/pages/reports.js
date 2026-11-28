@@ -1,5 +1,13 @@
 import { apiFetch, buildQuery, downloadExcel } from "../api.js";
 import {
+  collectDynamicFilterParams,
+  getSpecSchema,
+  inferFilterModeFromSelects,
+  itemTypeBadge,
+  renderDynamicFilterFields,
+  resetDynamicFilterFields,
+} from "../spec_ui.js";
+import {
   escapeHtml,
   fmtPriceHtml,
   fmtPriceInline,
@@ -12,6 +20,7 @@ import {
 
 const PREVIEW_PAGE_SIZE = 24;
 
+let allCategories = [];
 let previewPage = 1;
 let previewTotalPages = 1;
 let previewTotal = 0;
@@ -19,36 +28,56 @@ let previewLoaded = 0;
 let isLoadingPreview = false;
 let previewRequestSeq = 0;
 
+function populateItemTypeSelect(selectEl, schema) {
+  if (!selectEl || !schema || !schema.order) return;
+  const current = selectEl.value;
+  selectEl.innerHTML = [
+    `<option value="">همه انواع</option>`,
+    ...schema.order.map((key) => {
+      const def = schema.types[key];
+      return `<option value="${escapeHtml(key)}">${escapeHtml(def.label_fa)}</option>`;
+    }),
+  ].join("");
+  if (current) selectEl.value = current;
+}
+
+function syncExportSpecFilters() {
+  const itemTypeVal = document.getElementById("ex-item-type").value;
+  const parentCatId = document.getElementById("ex-parent-cat").value;
+  const subCatId = document.getElementById("ex-sub-cat").value;
+  const filterMode = inferFilterModeFromSelects({
+    itemTypeVal,
+    parentCatId,
+    subCatId,
+    categories: allCategories,
+  });
+  renderDynamicFilterFields(document.getElementById("ex-spec-filters"), filterMode, "ex-dyn");
+}
+
 function getInventoryExportFilters() {
   const parentCat = document.getElementById("ex-parent-cat").value;
   const subCat = document.getElementById("ex-sub-cat").value;
   return {
     search: document.getElementById("ex-search").value,
+    item_type: document.getElementById("ex-item-type").value,
     category_id: subCat || parentCat,
     item_code: document.getElementById("ex-item-code").value,
-    model: document.getElementById("ex-model").value,
-    size: document.getElementById("ex-size").value,
-    mounting_type: document.getElementById("ex-mounting").value,
-    material: document.getElementById("ex-material").value,
-    voltage: document.getElementById("ex-voltage").value,
     location: document.getElementById("ex-location").value,
     min_quantity: document.getElementById("ex-min-qty").value,
     max_quantity: document.getElementById("ex-max-qty").value,
     below_threshold: document.getElementById("ex-below").value,
     zero_stock: document.getElementById("ex-zero").checked ? "true" : "",
+    ...collectDynamicFilterParams(document.getElementById("ex-spec-filters")),
   };
 }
 
 function renderPreviewRow(it) {
-  const vm = [it.voltage, it.material].filter(Boolean).join(" / ") || "—";
   return `
     <tr class="clickable" data-item-id="${it.id}">
       <td class="mono"><strong>${escapeHtml(it.item_code)}</strong></td>
+      <td>${itemTypeBadge(it.item_type, it.item_type_label_fa)}</td>
       <td>${escapeHtml(it.category_path)}</td>
-      <td>${escapeHtml(it.model || "—")}</td>
-      <td>${escapeHtml(it.size || "—")}</td>
-      <td>${escapeHtml(it.mounting_type || "—")}</td>
-      <td>${escapeHtml(vm)}</td>
+      <td>${escapeHtml(it.spec_summary || it.display_name || "—")}</td>
       <td>${escapeHtml(it.location)}</td>
       <td class="text-right">${stockBadge(it.quantity)}</td>
       <td class="text-right num">${fmtPriceHtml(it.weighted_avg_cost, "نامشخص")}</td>
@@ -61,15 +90,22 @@ function renderPreviewMobileCard(it) {
     <div class="mobile-item-card" data-item-id="${it.id}" style="cursor:pointer;">
       <div class="mobile-item-head">
         <div>
-          <strong class="mono">${escapeHtml(it.item_code)}</strong>
-          ${it.model ? `<div style="font-weight:600;">${escapeHtml(it.model)}</div>` : ""}
+          <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+            ${itemTypeBadge(it.item_type, it.item_type_label_fa)}
+            <strong class="mono">${escapeHtml(it.item_code)}</strong>
+          </div>
+          ${
+            it.display_name && it.display_name !== it.item_code
+              ? `<div style="font-weight:600;margin-top:2px;">${escapeHtml(it.display_name)}</div>`
+              : ""
+          }
           <div class="text-muted" style="font-size:0.78rem;">${escapeHtml(it.category_path)}</div>
         </div>
         ${stockBadge(it.quantity)}
       </div>
       <div class="mobile-item-meta">
         <div><span class="text-muted">محل:</span> ${escapeHtml(it.location)}</div>
-        <div><span class="text-muted">نصب/سایز:</span> ${escapeHtml(it.mounting_type || "—")} / ${escapeHtml(it.size || "—")}</div>
+        <div><span class="text-muted">مشخصات:</span> ${escapeHtml(it.spec_summary || "—")}</div>
         <div><span class="text-muted">قیمت میانگین:</span> <span class="num">${fmtPriceInline(it.weighted_avg_cost, "نامشخص")}</span></div>
         <div><span class="text-muted">آخرین خرید:</span> <span class="num">${fmtPriceInline(it.last_purchase_cost, "نامشخص")}</span></div>
       </div>
@@ -112,7 +148,7 @@ async function loadPreview(reset = true) {
     previewLoaded = 0;
     if (desktopScroll) desktopScroll.scrollTop = 0;
     if (mobile) mobile.scrollTop = 0;
-    tbody.innerHTML = `<tr><td colspan="10" class="empty-state">در حال بارگذاری موجودی...</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="8" class="empty-state">در حال بارگذاری موجودی...</td></tr>`;
     mobile.innerHTML = "";
   } else {
     previewPage += 1;
@@ -135,7 +171,7 @@ async function loadPreview(reset = true) {
 
     if (reset) {
       if (!rows.length) {
-        tbody.innerHTML = `<tr><td colspan="10" class="empty-state">هیچ قطعه‌ای مطابق فیلترهای انتخابی یافت نشد.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="8" class="empty-state">هیچ قطعه‌ای مطابق فیلترهای انتخابی یافت نشد.</td></tr>`;
         mobile.innerHTML = `<div class="empty-state">هیچ قطعه‌ای مطابق فیلترهای انتخابی یافت نشد.</div>`;
       } else {
         tbody.innerHTML = rows.map(renderPreviewRow).join("");
@@ -179,11 +215,13 @@ document.addEventListener("DOMContentLoaded", async () => {
   });
 
   try {
-    const catData = await apiFetch("/api/categories");
+    const [schema, catData] = await Promise.all([getSpecSchema(), apiFetch("/api/categories")]);
+    allCategories = catData.categories || [];
+    populateItemTypeSelect(document.getElementById("ex-item-type"), schema);
     populateCategorySelects(
       document.getElementById("ex-parent-cat"),
       document.getElementById("ex-sub-cat"),
-      catData.categories || [],
+      allCategories,
       true
     );
   } catch (err) {
@@ -191,9 +229,13 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   // Register change listeners after populateCategorySelects so sub-category resets first
-  ["ex-parent-cat", "ex-sub-cat", "ex-mounting", "ex-zero"].forEach((id) => {
-    document.getElementById(id).addEventListener("change", () => loadPreview(true));
+  ["ex-item-type", "ex-parent-cat", "ex-sub-cat"].forEach((id) => {
+    document.getElementById(id).addEventListener("change", () => {
+      syncExportSpecFilters();
+      loadPreview(true);
+    });
   });
+  document.getElementById("ex-zero").addEventListener("change", () => loadPreview(true));
 
   document.getElementById("ex-inv-apply-btn").addEventListener("click", () => loadPreview(true));
 
@@ -217,14 +259,18 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   document.getElementById("ex-inv-reset-btn").addEventListener("click", () => {
     [
-      "ex-search", "ex-item-code", "ex-model", "ex-size", "ex-material",
-      "ex-voltage", "ex-location", "ex-min-qty", "ex-max-qty", "ex-below",
+      "ex-search", "ex-item-code", "ex-location", "ex-min-qty", "ex-max-qty", "ex-below",
     ].forEach((id) => { document.getElementById(id).value = ""; });
-    document.getElementById("ex-mounting").value = "";
+    document.getElementById("ex-item-type").value = "";
     document.getElementById("ex-zero").checked = false;
     document.getElementById("ex-parent-cat").value = "";
     document.getElementById("ex-parent-cat").dispatchEvent(new Event("change"));
+    resetDynamicFilterFields(document.getElementById("ex-spec-filters"));
+    syncExportSpecFilters();
+    loadPreview(true);
   });
+
+  syncExportSpecFilters();
 
   const desktopScroll = document.getElementById("ex-table-scroll");
   if (desktopScroll) {

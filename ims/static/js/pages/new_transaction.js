@@ -1,6 +1,14 @@
 import { apiFetch, buildQuery } from "../api.js";
 import { openCategoryModal, openItemModal } from "../modals.js";
 import {
+  collectDynamicFilterParams,
+  getSpecSchema,
+  inferFilterModeFromSelects,
+  itemTypeBadge,
+  renderDynamicFilterFields,
+  resetDynamicFilterFields,
+} from "../spec_ui.js";
+import {
   escapeHtml,
   fmtPriceHtml,
   fmtPriceInline,
@@ -105,9 +113,16 @@ function renderCart() {
       <div class="cart-item" data-cart-id="${item.id}">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
           <div style="min-width:0;">
-            <strong class="mono">${escapeHtml(item.item_code)}</strong>
-            ${item.model ? `<span class="text-secondary"> — ${escapeHtml(item.model)}</span>` : ""}
-            <div class="text-muted" style="font-size:0.78rem;">
+            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+              ${itemTypeBadge(item.item_type, item.item_type_label_fa)}
+              <strong class="mono">${escapeHtml(item.item_code)}</strong>
+            </div>
+            ${
+              item.display_name && item.display_name !== item.item_code
+                ? `<div class="text-secondary" style="font-size:0.84rem;margin-top:2px;">${escapeHtml(item.display_name)}</div>`
+                : ""
+            }
+            <div class="text-muted" style="font-size:0.78rem;margin-top:2px;">
               موجودی: ${stockBadge(item.quantity)} • محل: ${escapeHtml(item.location)}
             </div>
           </div>
@@ -252,7 +267,8 @@ function openReviewModal() {
       return `
       <tr>
         <td class="mono"><strong>${escapeHtml(item.item_code)}</strong></td>
-        <td>${escapeHtml(item.model || "—")}</td>
+        <td>${itemTypeBadge(item.item_type, item.item_type_label_fa)}</td>
+        <td>${escapeHtml(item.spec_summary || item.display_name || "—")}</td>
         <td class="text-right num"><strong>${fmtQty(quantity)}</strong></td>
         <td class="text-right num">${unitCostCell}</td>
         <td>${warn}</td>
@@ -272,7 +288,8 @@ function openReviewModal() {
           <thead>
             <tr>
               <th>کد قطعه</th>
-              <th>مدل</th>
+              <th>نوع</th>
+              <th>مشخصات فنی</th>
               <th class="text-right">تعداد</th>
               <th class="text-right">${outgoing ? "بهای واحد تخمینی (قیمت میانگین)" : "قیمت واحد (ریال / تومان)"}</th>
               <th>کنترل موجودی</th>
@@ -333,13 +350,16 @@ function showResultsModal(res) {
   const s = res.summary || {};
   const rows = (res.results || [])
     .map((r) => {
+      const typeAndSpecs = `${r.item_type ? `${itemTypeBadge(r.item_type)} ` : ""}${escapeHtml(
+        r.spec_summary || r.display_name || "—"
+      )}`;
       if (r.status === "succeeded") {
         const tx = r.transaction;
         return `
         <tr>
           <td><span class="badge badge-success">ثبت شد</span></td>
           <td class="mono"><strong>${escapeHtml(r.item_code)}</strong></td>
-          <td>${escapeHtml(r.model || "—")}</td>
+          <td>${typeAndSpecs}</td>
           <td class="text-right num">${fmtQty(tx.quantity)}</td>
           <td class="text-right num ltr">${fmtQty(tx.stock_before)} → <strong>${fmtQty(tx.stock_after)}</strong></td>
           <td class="text-right num">${fmtPriceHtml(tx.unit_cost_snapshot, "نامشخص")}</td>
@@ -350,7 +370,7 @@ function showResultsModal(res) {
       <tr>
         <td><span class="badge badge-danger">ناموفق</span></td>
         <td class="mono"><strong>${escapeHtml(r.item_code || r.item_id || "—")}</strong></td>
-        <td>${escapeHtml(r.model || "—")}</td>
+        <td>${typeAndSpecs}</td>
         <td class="text-right num">${fmtQty(r.requested_quantity)}</td>
         <td class="text-right num">${r.available_quantity !== undefined && r.available_quantity !== null ? `<span class="badge badge-stock-accent num">موجود: ${fmtQty(r.available_quantity)}</span>` : "—"}</td>
         <td class="text-right">—</td>
@@ -379,7 +399,7 @@ function showResultsModal(res) {
             <tr>
               <th>وضعیت</th>
               <th>کد قطعه</th>
-              <th>مدل</th>
+              <th>نوع و مشخصات</th>
               <th class="text-right">تعداد</th>
               <th class="text-right">تغییر موجودی</th>
               <th class="text-right">بهای واحد</th>
@@ -397,6 +417,48 @@ function showResultsModal(res) {
   });
 }
 
+function populateItemTypeSelect(selectEl, schema) {
+  if (!selectEl || !schema || !schema.order) return;
+  const current = selectEl.value;
+  selectEl.innerHTML = [
+    `<option value="">همه انواع</option>`,
+    ...schema.order.map((key) => {
+      const def = schema.types[key];
+      return `<option value="${escapeHtml(key)}">${escapeHtml(def.label_fa)}</option>`;
+    }),
+  ].join("");
+  if (current) selectEl.value = current;
+}
+
+function syncTxSpecFilters() {
+  const itemTypeVal = document.getElementById("t-item-type").value;
+  const parentCatId = document.getElementById("t-parent-cat").value;
+  const subCatId = document.getElementById("t-sub-cat").value;
+  const specBox = document.getElementById("tx-spec-filters");
+  const specHint = document.getElementById("tx-spec-hint");
+  const secFilters = document.getElementById("tx-secondary-filters");
+  const moreBtn = document.getElementById("tx-more-filters-btn");
+
+  const filterMode = inferFilterModeFromSelects({
+    itemTypeVal,
+    parentCatId,
+    subCatId,
+    categories: allCategories,
+  });
+
+  renderDynamicFilterFields(specBox, filterMode, "tx-dyn");
+  if (specHint) {
+    specHint.classList.toggle("hidden", Boolean(filterMode));
+  }
+  if (filterMode && secFilters && secFilters.classList.contains("hidden")) {
+    secFilters.classList.remove("hidden");
+    if (moreBtn) {
+      moreBtn.textContent = "بستن فیلترهای بیشتر";
+      moreBtn.setAttribute("aria-expanded", "true");
+    }
+  }
+}
+
 function getFilterParams(page = 1) {
   const parentCat = document.getElementById("t-parent-cat").value;
   const subCat = document.getElementById("t-sub-cat").value;
@@ -404,33 +466,31 @@ function getFilterParams(page = 1) {
     page,
     page_size: 24,
     search: document.getElementById("t-search").value,
+    item_type: document.getElementById("t-item-type").value,
     category_id: subCat || parentCat,
     item_code: document.getElementById("t-item-code").value,
     location: document.getElementById("t-location").value,
     below_threshold: document.getElementById("t-below").value,
     zero_stock: document.getElementById("t-zero").checked ? "true" : "",
-    mounting_type: document.getElementById("t-mounting").value,
-    size: document.getElementById("t-size").value,
-    model: document.getElementById("t-model").value,
-    voltage: document.getElementById("t-voltage").value,
-    material: document.getElementById("t-material").value,
+    ...collectDynamicFilterParams(document.getElementById("tx-spec-filters")),
   };
 }
 
 function renderCatalogRow(it) {
+  const hasDistinctName = it.display_name && it.display_name !== it.item_code;
+  const specText = it.spec_summary && it.spec_summary !== "—" ? it.spec_summary : "";
   return `
     <div class="cart-item tx-catalog-row" style="flex-direction:row;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:12px;">
       <div style="min-width:200px;flex:1;">
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+          ${itemTypeBadge(it.item_type, it.item_type_label_fa)}
           <strong class="mono">${escapeHtml(it.item_code)}</strong>
-          ${it.model ? `<strong>${escapeHtml(it.model)}</strong>` : ""}
+          ${hasDistinctName ? `<strong>${escapeHtml(it.display_name)}</strong>` : ""}
           ${stockBadge(it.quantity)}
         </div>
-        <div class="text-secondary" style="font-size:0.81rem;margin-top:2px;">
+        <div class="text-secondary" style="font-size:0.81rem;margin-top:3px;">
           ${escapeHtml(it.category_path)} • محل: <strong>${escapeHtml(it.location)}</strong>
-          ${it.size ? ` • سایز: ${escapeHtml(it.size)}` : ""}
-          ${it.mounting_type ? ` • ${escapeHtml(it.mounting_type)}` : ""}
-          ${it.voltage ? ` • ${escapeHtml(it.voltage)}` : ""}
+          ${specText && specText !== it.display_name ? ` • ${escapeHtml(specText)}` : ""}
         </div>
         <div class="text-muted" style="font-size:0.79rem;margin-top:2px;">
           قیمت میانگین: <span class="num">${fmtPriceInline(it.weighted_avg_cost, "نامشخص")}</span>
@@ -609,14 +669,15 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (e.key === "Enter") loadCatalog(true);
   });
   document.getElementById("t-reset-btn").addEventListener("click", () => {
-    [
-      "t-search", "t-item-code", "t-location", "t-below",
-      "t-size", "t-model", "t-voltage", "t-material",
-    ].forEach((id) => { document.getElementById(id).value = ""; });
-    document.getElementById("t-mounting").value = "";
+    ["t-search", "t-item-code", "t-location", "t-below"].forEach((id) => {
+      document.getElementById(id).value = "";
+    });
+    document.getElementById("t-item-type").value = "";
     document.getElementById("t-parent-cat").value = "";
     document.getElementById("t-parent-cat").dispatchEvent(new Event("change"));
     document.getElementById("t-zero").checked = false;
+    resetDynamicFilterFields(document.getElementById("tx-spec-filters"));
+    syncTxSpecFilters();
     loadCatalog(true);
   });
 
@@ -624,7 +685,16 @@ document.addEventListener("DOMContentLoaded", async () => {
   renderCart();
 
   try {
+    const schema = await getSpecSchema();
+    populateItemTypeSelect(document.getElementById("t-item-type"), schema);
     await refreshCategories();
+    ["t-item-type", "t-parent-cat", "t-sub-cat"].forEach((id) => {
+      document.getElementById(id).addEventListener("change", () => {
+        syncTxSpecFilters();
+        loadCatalog(true);
+      });
+    });
+    syncTxSpecFilters();
   } catch (err) {
     toast(err.message, "error");
   }

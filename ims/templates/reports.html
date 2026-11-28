@@ -32,23 +32,21 @@
     </div>
 
     <div class="card-body" style="border-bottom:1px solid var(--border-color);">
+      <div class="alert alert-info" style="margin-bottom:12px;font-size:0.84rem;">
+        در صورت انتخاب همه انواع یا ترکیب چند نوع قطعه، فایل اکسل خروجی به‌صورت خودکار دارای <strong>چند شیت مجزا</strong> (یک شیت برای هر نوع قطعه با ستون‌های فنی اختصاصی) خواهد بود.
+      </div>
       <div id="ex-filters" class="filter-collapsible">
         <div class="form-grid">
-          <div class="field"><label for="ex-search">جستجوی کلی</label><input id="ex-search" class="input" type="text" placeholder="هر یک از فیلدها..."></div>
+          <div class="field"><label for="ex-search">جستجوی کلی</label><input id="ex-search" class="input" type="text" placeholder="کد، مدل، ابعاد (mm)، کشو..."></div>
+          <div class="field">
+            <label for="ex-item-type">نوع قطعه</label>
+            <select id="ex-item-type" class="select">
+              <option value="">همه انواع</option>
+            </select>
+          </div>
           <div class="field"><label for="ex-parent-cat">دسته‌بندی اصلی</label><select id="ex-parent-cat" class="select"></select></div>
           <div class="field"><label for="ex-sub-cat">زیردسته</label><select id="ex-sub-cat" class="select"></select></div>
           <div class="field"><label for="ex-item-code">کد قطعه</label><input id="ex-item-code" class="input ltr" type="text"></div>
-          <div class="field"><label for="ex-model">مدل</label><input id="ex-model" class="input" type="text"></div>
-          <div class="field"><label for="ex-size">سایز</label><input id="ex-size" class="input" type="text"></div>
-          <div class="field"><label for="ex-mounting">نوع نصب</label>
-            <select id="ex-mounting" class="select">
-              <option value="">همه</option>
-              <option value="SMD">SMD</option>
-              <option value="DIP">DIP</option>
-            </select>
-          </div>
-          <div class="field"><label for="ex-material">متریال</label><input id="ex-material" class="input" type="text"></div>
-          <div class="field"><label for="ex-voltage">ولتاژ</label><input id="ex-voltage" class="input" type="text"></div>
           <div class="field"><label for="ex-location">محل نگهداری / کشو</label><input id="ex-location" class="input" type="text"></div>
           <div class="field"><label for="ex-min-qty">حداقل موجودی</label><input id="ex-min-qty" class="input" type="number" min="0" step="1"></div>
           <div class="field"><label for="ex-max-qty">حداکثر موجودی</label><input id="ex-max-qty" class="input" type="number" min="0" step="1"></div>
@@ -57,6 +55,7 @@
             <label class="checkbox-row"><input id="ex-zero" type="checkbox"><span>فقط کالاهای با موجودی صفر</span></label>
           </div>
         </div>
+        <div id="ex-spec-filters" class="spec-filter-panel hidden" style="margin-top:12px;"></div>
         <div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap;">
           <button type="button" id="ex-inv-apply-btn" class="btn btn-sm btn-primary">اعمال فیلتر و پیش‌نمایش</button>
           <button type="button" id="ex-inv-dl-btn" class="btn btn-sm btn-accent">دانلود اکسل موارد منطبق (.xlsx)</button>
@@ -70,11 +69,9 @@
         <thead>
           <tr>
             <th>کد قطعه</th>
+            <th>نوع</th>
             <th>دسته‌بندی</th>
-            <th>مدل</th>
-            <th>سایز</th>
-            <th>نوع نصب</th>
-            <th>ولتاژ / متریال</th>
+            <th>مشخصات فنی</th>
             <th>محل نگهداری</th>
             <th class="text-right">موجودی فعلی</th>
             <th class="text-right">قیمت میانگین (ریال / تومان)</th>
@@ -82,7 +79,7 @@
           </tr>
         </thead>
         <tbody id="ex-preview-tbody">
-          <tr><td colspan="10" class="empty-state">در حال بارگذاری موجودی...</td></tr>
+          <tr><td colspan="8" class="empty-state">در حال بارگذاری موجودی...</td></tr>
         </tbody>
       </table>
     </div>

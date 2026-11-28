@@ -1,49 +1,89 @@
-"""Initial inventory Excel upload, validation preview, and import execution service."""
+"""Type-aware Excel initial inventory upload, template generation, validation, and import."""
 
 from collections import Counter
-from decimal import Decimal
+from io import BytesIO
 from pathlib import Path
-from openpyxl import load_workbook
+from openpyxl import Workbook, load_workbook
+from openpyxl.styles import Alignment, Font, PatternFill
 import psycopg2
 from ims.db import AppError, get_db, translate_pg_error
-from ims.services.category_service import resolve_or_create_category_pair
+from ims.item_specs import (
+    SPEC_DEFINITIONS,
+    build_spec_summary,
+    compute_o_ring_cross_section,
+    get_spec_definition,
+    resolve_spec_type,
+    validate_specs,
+)
+from ims.services.category_service import (
+    resolve_category_for_spec_type,
+    resolve_category_plan_names,
+)
+from ims.services.item_service import upsert_spec_row
 from ims.utils import (
     clean_text,
-    normalize_mounting_type,
+    normalize_persian_text,
     parse_nonnegative_int,
     parse_optional_price,
     resolve_uploaded_xlsx,
 )
 
-
-IMPORT_FIELD_ALIASES = {
-    "item_code": ("item_code", "item code", "code", "sku", "part_number", "part number"),
-    "category": ("category", "main_category", "main category"),
-    "sub_category": ("sub_category", "subcategory", "sub category"),
-    "model": ("model", "part", "name", "item_name", "item name"),
-    "size": ("size", "package", "footprint"),
-    "mounting_type": ("mounting_type", "mounting type", "mounting", "mount"),
-    "voltage": ("voltage", "volt", "rated_voltage"),
-    "material": ("material",),
-    "location": ("location", "drawer", "drawer_number", "bin", "shelf"),
-    "quantity": ("quantity", "qty", "stock", "initial_quantity", "opening_qty"),
-    "price": ("price", "unit_price", "unit price", "cost", "unit_cost", "unit cost"),
-    "description": ("description", "desc", "notes", "note"),
+COMMON_FIELD_ALIASES = {
+    "item_code": ("item_code", "item code", "code", "sku", "part_number", "part number", "کد قطعه", "کد"),
+    "category": ("category", "main_category", "main category", "دسته بندی", "دسته‌بندی", "دسته بندی اصلی", "دسته‌بندی اصلی", "گروه"),
+    "sub_category": ("sub_category", "subcategory", "sub category", "type_name", "component_type", "زیر دسته", "زیردسته", "نوع قطعه"),
+    "location": ("location", "drawer", "drawer_number", "bin", "shelf", "محل نگهداری", "کشو", "موقعیت"),
+    "quantity": ("quantity", "qty", "stock", "initial_quantity", "opening_qty", "تعداد", "موجودی", "موجودی اولیه"),
+    "price": ("price", "unit_price", "unit price", "cost", "unit_cost", "unit cost", "قیمت", "قیمت واحد", "فی"),
+    "description": ("description", "desc", "notes", "note", "توضیحات", "شرح"),
 }
 
 ALLOWED_POLICIES = ("skip", "update_metadata")
 
 
-def _suggest_mapping(headers: list[str]) -> dict[str, str | None]:
-    normalized_headers = {h.strip().lower(): h for h in headers}
+def _build_type_fields_meta(item_type: str) -> list[dict]:
+    """Return ordered column-mapping metadata for item_type."""
+    defn = get_spec_definition(item_type)
+    is_electronic = item_type == "electronic_item"
+    fields = [
+        {"key": "item_code", "label": "کد قطعه", "required": True, "aliases": COMMON_FIELD_ALIASES["item_code"]},
+        {"key": "category", "label": "دسته‌بندی اصلی", "required": False, "aliases": COMMON_FIELD_ALIASES["category"]},
+        {"key": "sub_category", "label": "زیردسته", "required": is_electronic, "aliases": COMMON_FIELD_ALIASES["sub_category"]},
+    ]
+    for f in defn["fields"]:
+        if f["kind"] == "computed_mm":
+            continue
+        label = f["label_fa"]
+        if f.get("unit"):
+            label = f"{label} ({f['unit']})"
+        fields.append({
+            "key": f["name"],
+            "label": label,
+            "required": bool(f.get("required")),
+            "aliases": f.get("excel_aliases", (f["name"],)),
+        })
+    fields.extend([
+        {"key": "location", "label": "محل نگهداری / کشو", "required": True, "aliases": COMMON_FIELD_ALIASES["location"]},
+        {"key": "quantity", "label": "موجودی اولیه", "required": True, "aliases": COMMON_FIELD_ALIASES["quantity"]},
+        {"key": "price", "label": "قیمت واحد (ریال)", "required": False, "aliases": COMMON_FIELD_ALIASES["price"]},
+        {"key": "description", "label": "توضیحات", "required": False, "aliases": COMMON_FIELD_ALIASES["description"]},
+    ])
+    return fields
+
+
+def _suggest_mapping_for_type(headers: list[str], item_type: str) -> dict[str, str | None]:
+    normalized_headers = {
+        (normalize_persian_text(h) or h).strip().lower(): h for h in headers
+    }
     mapping: dict[str, str | None] = {}
-    for target, aliases in IMPORT_FIELD_ALIASES.items():
+    for field in _build_type_fields_meta(item_type):
         matched = None
-        for alias in aliases:
-            if alias in normalized_headers:
-                matched = normalized_headers[alias]
+        for alias in field["aliases"]:
+            norm_alias = (normalize_persian_text(alias) or alias).strip().lower()
+            if norm_alias in normalized_headers:
+                matched = normalized_headers[norm_alias]
                 break
-        mapping[target] = matched
+        mapping[field["key"]] = matched
     return mapping
 
 
@@ -100,21 +140,187 @@ def _read_workbook_sheet(path: Path, sheet_name: str | None = None) -> tuple[lis
     return sheet_names, selected_sheet, headers, data_rows
 
 
-def inspect_import_upload(upload_id: str, upload_dir: str | Path, sheet_name: str | None = None) -> dict:
-    """Inspect uploaded Excel headers, sheet names, sample rows, and suggested mapping."""
+def generate_import_template_xlsx(item_type: str) -> bytes:
+    """Generate a downloadable .xlsx template workbook with exact columns and field guide."""
+    defn = get_spec_definition(item_type)
+    fields_meta = _build_type_fields_meta(item_type)
+
+    headers = [f["key"] for f in fields_meta]
+    example_values = {
+        "electronic_item": {
+            "item_code": "RES-1K-0603",
+            "category": "Electronic",
+            "sub_category": "Resistor",
+            "model": "1K 1%",
+            "package_size": "0603",
+            "mounting_type": "SMD",
+            "voltage": "50V",
+            "material": "Thick Film",
+            "location": "E1-01",
+            "quantity": 100,
+            "price": 5000,
+            "description": "Sample electronic resistor",
+        },
+        "screw": {
+            "item_code": "SCR-4X12-HEX",
+            "category": "Mechanical",
+            "sub_category": "Screw",
+            "diameter": 4,
+            "length": 12,
+            "material": "STAINLESS_STEEL",
+            "head_type": "آلنی",
+            "drive_type": "آلنی",
+            "location": "M2-01",
+            "quantity": 250,
+            "price": 12000,
+            "description": "Dimensions in mm; do not use M4/M5 strings",
+        },
+        "nut": {
+            "item_code": "NUT-4-SS",
+            "category": "Mechanical",
+            "sub_category": "Nut",
+            "diameter": 4,
+            "material": "STAINLESS_STEEL",
+            "location": "M2-02",
+            "quantity": 300,
+            "price": 6000,
+            "description": "Diameter in mm",
+        },
+        "spacer": {
+            "item_code": "SPC-3X15-F",
+            "category": "Mechanical",
+            "sub_category": "Spacer",
+            "diameter": 3,
+            "length": 15,
+            "material": "STAINLESS_STEEL",
+            "spacer_type": "F",
+            "location": "M1-01",
+            "quantity": 80,
+            "price": 25000,
+            "description": "F = male-female, H = female-female",
+        },
+        "washer": {
+            "item_code": "WSH-5-PLAIN",
+            "category": "Mechanical",
+            "sub_category": "Washer",
+            "diameter": 5,
+            "washer_type": "PLAIN",
+            "material": "IRON",
+            "location": "M3-01",
+            "quantity": 500,
+            "price": 3000,
+            "description": "PLAIN or SPRING",
+        },
+        "o_ring": {
+            "item_code": "OR-54X60-VIT",
+            "category": "Mechanical",
+            "sub_category": "O-Ring",
+            "inner_diameter": 54,
+            "outer_diameter": 60,
+            "material": "VITON",
+            "location": "M4-01",
+            "quantity": 40,
+            "price": 90000,
+            "description": "cross_section = (outer - inner)/2 is calculated automatically",
+        },
+    }[item_type]
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = defn["sheet_name"]
+    ws.append(headers)
+
+    header_fill = PatternFill("solid", fgColor="1E293B")
+    header_font = Font(color="FFFFFF", bold=True)
+    for col_idx in range(1, len(headers) + 1):
+        c = ws.cell(row=1, column=col_idx)
+        c.fill = header_fill
+        c.font = header_font
+        c.alignment = Alignment(horizontal="left", vertical="center")
+
+    ws.append([example_values.get(h, "") for h in headers])
+    ws.freeze_panes = "A2"
+
+    for col in ws.columns:
+        max_len = max((len(str(cell.value or "")) for cell in col), default=10)
+        ws.column_dimensions[col[0].column_letter].width = min(max(max_len + 4, 14), 38)
+
+    ws_guide = wb.create_sheet("Field Guide")
+    ws_guide.append(["Column", "Required", "Rule / Allowed Values"])
+    for col_idx in range(1, 4):
+        c = ws_guide.cell(row=1, column=col_idx)
+        c.fill = header_fill
+        c.font = header_font
+
+    spec_by_name = {f["name"]: f for f in defn["fields"]}
+    for f in fields_meta:
+        k = f["key"]
+        req_str = "Yes" if f["required"] else "No"
+        if k in spec_by_name and spec_by_name[k].get("options"):
+            opts = ", ".join(o["value"] for o in spec_by_name[k]["options"])
+            rule = f"Allowed values: {opts}"
+        elif k in spec_by_name and spec_by_name[k]["kind"] == "mm":
+            rule = "Positive number in millimeters (mm); do not enter M5/M6 strings."
+        elif k == "price":
+            rule = "Optional unit cost in Iranian Rial (IRR)"
+        elif k == "sub_category":
+            rule = (
+                "Required subcategory (Persian, English, or mixed — created automatically if new)"
+                if item_type == "electronic_item"
+                else f"Optional subcategory in any language (defaults to '{defn['default_subcategory']}' if omitted)"
+            )
+        elif k == "category":
+            rule = (
+                f"Optional main category in any language (defaults to '{defn['root_category']}' if omitted)"
+            )
+        else:
+            rule = f["label"]
+        ws_guide.append([k, req_str, rule])
+
+    if item_type == "o_ring":
+        ws_guide.append([
+            "cross_section",
+            "Auto-calculated",
+            "Do NOT enter manually. Database calculates (outer_diameter - inner_diameter) / 2.",
+        ])
+
+    for col in ws_guide.columns:
+        max_len = max((len(str(cell.value or "")) for cell in col), default=12)
+        ws_guide.column_dimensions[col[0].column_letter].width = min(max(max_len + 4, 16), 60)
+
+    buf = BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return buf.getvalue()
+
+
+def inspect_import_upload(
+    upload_id: str,
+    upload_dir: str | Path,
+    item_type: str,
+    sheet_name: str | None = None,
+) -> dict:
+    """Inspect uploaded Excel headers, sheet names, sample rows, and type-specific mapping."""
+    defn = get_spec_definition(item_type)
     path = resolve_uploaded_xlsx(upload_id, upload_dir)
     sheet_names, selected_sheet, headers, data_rows = _read_workbook_sheet(path, sheet_name)
-    mapping = _suggest_mapping(headers)
+    fields_meta = _build_type_fields_meta(item_type)
+    mapping = _suggest_mapping_for_type(headers, item_type)
 
-    sample_rows = []
-    for entry in data_rows[:5]:
-        sample_rows.append({
+    sample_rows = [
+        {
             "row_number": entry["row_number"],
             "values": {h: clean_text(entry["raw"].get(h)) for h in headers},
-        })
+        }
+        for entry in data_rows[:5]
+    ]
 
     return {
         "upload_id": upload_id,
+        "item_type": item_type,
+        "item_type_label_fa": defn["label_fa"],
+        "item_type_label_en": defn["label_en"],
+        "fields": [{"key": f["key"], "label": f["label"], "required": f["required"]} for f in fields_meta],
         "sheet_names": sheet_names,
         "selected_sheet": selected_sheet,
         "headers": headers,
@@ -127,24 +333,45 @@ def inspect_import_upload(upload_id: str, upload_dir: str | Path, sheet_name: st
 def _policy_explanation(policy: str) -> str:
     if policy == "update_metadata":
         return (
-            "New items are created and their initial stock is recorded via OPENING transactions "
-            "(populating weighted average cost and last purchase cost when price is supplied). "
-            "Existing item codes update item specifications ONLY — existing inventory quantities, "
-            "costs, and historical OPENING transactions are NEVER overwritten."
+            "New item codes are created with their specification record and OPENING stock transaction. "
+            "Existing items of the same type update metadata and specs ONLY — stock, costs, and OPENING history are never overwritten."
         )
     return (
-        "Safe default policy: Only new item codes are created and initialized via OPENING transactions "
-        "(populating weighted average cost and last purchase cost when price is supplied). "
-        "Any item code already present in the database is skipped with zero changes to items, stock, or costs."
+        "Safe default policy: Only new item codes are created with their specification record and OPENING transaction. "
+        "Existing item codes are skipped without changing specifications, stock, or costs."
     )
 
 
+def _norm_cat_key(val: str | None) -> str:
+    return (normalize_persian_text(val) or "").strip().lower()
+
+
+def _validate_import_category_preview(
+    item_type: str,
+    category_name: str | None,
+    sub_category_name: str | None,
+) -> tuple[str, str]:
+    """Resolve category/sub_category names for item_type in any language without touching DB."""
+    return resolve_category_plan_names(item_type, category_name, sub_category_name)
+
+
 def _load_existing_categories_map(cur) -> tuple[dict[str, dict], dict[tuple[int, str], dict]]:
-    cur.execute("SELECT id, parent_id, name FROM category;")
+    cur.execute(
+        """
+        SELECT
+            c.id,
+            c.parent_id,
+            c.name,
+            c.spec_type,
+            (SELECT COUNT(*)::INT FROM category ch WHERE ch.parent_id = c.id) AS child_count,
+            (SELECT COUNT(*)::INT FROM item it WHERE it.category_id = c.id) AS direct_item_count
+          FROM category c;
+        """
+    )
     roots: dict[str, dict] = {}
     children: dict[tuple[int, str], dict] = {}
     for row in cur.fetchall():
-        key = row["name"].strip().lower()
+        key = _norm_cat_key(row["name"])
         if row["parent_id"] is None:
             roots[key] = dict(row)
         else:
@@ -160,16 +387,12 @@ def _load_existing_items_map(cur, item_codes: list[str]) -> dict[str, dict]:
         SELECT
             i.id AS item_id,
             i.item_code,
-            i.model,
+            fn_resolve_category_spec_type(i.category_id) AS existing_item_type,
             inv.quantity AS current_quantity,
             EXISTS(
                 SELECT 1 FROM inventory_transaction t
                  WHERE t.item_id = i.id AND t.transaction_type = 'OPENING'
-            ) AS has_opening_tx,
-            (
-                SELECT COUNT(*)::INT FROM inventory_transaction t
-                 WHERE t.item_id = i.id
-            ) AS tx_count
+            ) AS has_opening_tx
         FROM item i
         JOIN inventory inv ON inv.item_id = i.id
         WHERE i.item_code = ANY(%s);
@@ -182,28 +405,41 @@ def _load_existing_items_map(cur, item_codes: list[str]) -> dict[str, dict]:
 def preview_import(
     upload_id: str,
     upload_dir: str | Path,
+    item_type: str,
     sheet_name: str | None = None,
     column_mapping: dict | None = None,
     existing_policy: str = "skip",
 ) -> dict:
-    """Validate Excel rows, build category population plan, and return dry-run preview."""
+    """Validate Excel rows for a specific item_type and return dry-run preview."""
+    defn = get_spec_definition(item_type)
     policy = (existing_policy or "skip").strip()
     if policy not in ALLOWED_POLICIES:
         raise AppError(f"Unsupported existing_policy '{existing_policy}'.")
 
     path = resolve_uploaded_xlsx(upload_id, upload_dir)
     sheet_names, selected_sheet, headers, data_rows = _read_workbook_sheet(path, sheet_name)
-    mapping = column_mapping if isinstance(column_mapping, dict) and column_mapping else _suggest_mapping(headers)
+    mapping = (
+        column_mapping
+        if isinstance(column_mapping, dict) and column_mapping
+        else _suggest_mapping_for_type(headers, item_type)
+    )
 
-    required_mappings = ("item_code", "category", "location", "quantity")
-    missing_mapped_cols = [f for f in required_mappings if not mapping.get(f)]
-    if missing_mapped_cols:
+    fields_meta = _build_type_fields_meta(item_type)
+    missing_cols = [
+        f["key"]
+        for f in fields_meta
+        if f["required"] and not mapping.get(f["key"])
+    ]
+    if item_type == "electronic_item" and not (mapping.get("sub_category") or mapping.get("category")):
+        missing_cols.append("sub_category")
+    if missing_cols:
         raise AppError(
-            f"Required column mapping missing for: {', '.join(missing_mapped_cols)}."
+            f"Required column mapping missing for {defn['label_en']}: {', '.join(dict.fromkeys(missing_cols))}."
         )
 
     parsed_rows = []
     code_occurrences: dict[str, list[int]] = {}
+    spec_field_names = [f["name"] for f in defn["fields"] if f["kind"] != "computed_mm"]
 
     for entry in data_rows:
         row_num = entry["row_number"]
@@ -225,26 +461,38 @@ def preview_import(
             errors.append(f"item_code: {exc.message}")
 
         try:
-            category = clean_text(get_col("category"), max_len=100)
-            if not category:
-                missing_category_flag = True
-                errors.append("Missing category.")
+            raw_cat = normalize_persian_text(clean_text(get_col("category"), max_len=100))
         except AppError as exc:
-            category = None
-            missing_category_flag = True
+            raw_cat = None
             errors.append(f"category: {exc.message}")
 
         try:
-            sub_category = clean_text(get_col("sub_category"), max_len=100)
+            raw_sub = normalize_persian_text(clean_text(get_col("sub_category"), max_len=100))
         except AppError as exc:
-            sub_category = None
+            raw_sub = None
             errors.append(f"sub_category: {exc.message}")
 
+        resolved_cat = None
+        resolved_sub = None
         try:
-            model = clean_text(get_col("model"), max_len=150)
+            resolved_cat, resolved_sub = _validate_import_category_preview(
+                item_type, raw_cat, raw_sub
+            )
         except AppError as exc:
-            model = None
-            errors.append(f"model: {exc.message}")
+            missing_category_flag = True
+            errors.append(exc.message)
+
+        raw_specs = {fname: get_col(fname) for fname in spec_field_names}
+        clean_specs = {}
+        try:
+            clean_specs = validate_specs(item_type, raw_specs)
+            if item_type == "o_ring":
+                clean_specs["cross_section"] = compute_o_ring_cross_section(
+                    clean_specs["inner_diameter"],
+                    clean_specs["outer_diameter"],
+                )
+        except AppError as exc:
+            errors.append(exc.message)
 
         try:
             location = clean_text(get_col("location"), max_len=150)
@@ -253,30 +501,6 @@ def preview_import(
         except AppError as exc:
             location = None
             errors.append(f"location: {exc.message}")
-
-        try:
-            size = clean_text(get_col("size"), max_len=50)
-        except AppError as exc:
-            size = None
-            errors.append(f"size: {exc.message}")
-
-        try:
-            mounting_type = normalize_mounting_type(get_col("mounting_type"))
-        except AppError as exc:
-            mounting_type = clean_text(get_col("mounting_type"))
-            errors.append(exc.message)
-
-        try:
-            voltage = clean_text(get_col("voltage"), max_len=80)
-        except AppError as exc:
-            voltage = None
-            errors.append(f"voltage: {exc.message}")
-
-        try:
-            material = clean_text(get_col("material"), max_len=100)
-        except AppError as exc:
-            material = None
-            errors.append(f"material: {exc.message}")
 
         try:
             description = clean_text(get_col("description"))
@@ -306,13 +530,10 @@ def preview_import(
         parsed_rows.append({
             "row_number": row_num,
             "item_code": item_code,
-            "category": category,
-            "sub_category": sub_category,
-            "model": model,
-            "size": size,
-            "mounting_type": mounting_type,
-            "voltage": voltage,
-            "material": material,
+            "category": resolved_cat,
+            "sub_category": resolved_sub,
+            "specs": clean_specs,
+            "spec_summary": build_spec_summary(item_type, clean_specs) if clean_specs else "—",
             "location": location,
             "quantity": quantity,
             "price": price,
@@ -335,7 +556,7 @@ def preview_import(
         existing_roots, existing_children = _load_existing_categories_map(cur)
 
     preview_rows = []
-    category_pairs_to_apply: list[tuple[str, str | None]] = []
+    category_pairs_to_apply: list[tuple[str, str]] = []
 
     valid_new_rows = 0
     existing_rows = 0
@@ -353,6 +574,31 @@ def preview_import(
         warnings = list(row["warnings"])
         existing_info = None
 
+        if row["category"] and not row["_missing_category"]:
+            p_key = _norm_cat_key(row["category"])
+            existing_root = existing_roots.get(p_key)
+            if existing_root:
+                if existing_root["direct_item_count"] > 0:
+                    errors.append(
+                        f"Category '{row['category']}' already has items directly assigned and cannot accept subcategories."
+                    )
+                elif row["sub_category"]:
+                    c_key = _norm_cat_key(row["sub_category"])
+                    existing_child = existing_children.get((existing_root["id"], c_key))
+                    if existing_child:
+                        if existing_child["child_count"] > 0:
+                            errors.append(
+                                f"Subcategory '{row['sub_category']}' under '{existing_root['name']}' has child categories and cannot directly hold items."
+                            )
+                        else:
+                            existing_sub_spec = existing_child["spec_type"] or resolve_spec_type(
+                                existing_root["name"], existing_child["name"], is_leaf=True
+                            )
+                            if existing_sub_spec is not None and existing_sub_spec != item_type:
+                                errors.append(
+                                    f"Subcategory '{row['sub_category']}' under '{existing_root['name']}' is already assigned to '{existing_sub_spec}' and cannot be used for '{item_type}'."
+                                )
+
         if code and code in duplicate_codes:
             dup_list = ", ".join(str(n) for n in code_occurrences[code])
             errors.append(f"Duplicate item_code '{code}' appears on Excel rows: {dup_list}.")
@@ -369,23 +615,32 @@ def preview_import(
                 missing_category_rows += 1
         elif code in existing_items:
             existing_info = existing_items[code]
-            status = "existing"
-            existing_rows += 1
-            if existing_info["has_opening_tx"]:
-                existing_with_opening_count += 1
-            if policy == "update_metadata":
-                action = "update_metadata"
-                existing_updated_rows += 1
-                warnings.append(
-                    f"Existing stock ({existing_info['current_quantity']}) and transactions will NOT be altered."
+            existing_type = existing_info["existing_item_type"]
+            if existing_type and existing_type != item_type and policy == "update_metadata":
+                status = "invalid"
+                action = "blocked"
+                invalid_rows += 1
+                errors.append(
+                    f"Existing item '{code}' is registered as '{existing_type}' and cannot be updated via '{item_type}' import."
                 )
-                category_pairs_to_apply.append((row["category"], row["sub_category"]))
             else:
-                action = "skip"
-                existing_skipped_rows += 1
-                warnings.append(
-                    f"Already exists (stock: {existing_info['current_quantity']}); row will be skipped."
-                )
+                status = "existing"
+                existing_rows += 1
+                if existing_info["has_opening_tx"]:
+                    existing_with_opening_count += 1
+                if policy == "update_metadata":
+                    action = "update_metadata"
+                    existing_updated_rows += 1
+                    warnings.append(
+                        f"Existing stock ({existing_info['current_quantity']}) and transactions will NOT be altered."
+                    )
+                    category_pairs_to_apply.append((row["category"], row["sub_category"]))
+                else:
+                    action = "skip"
+                    existing_skipped_rows += 1
+                    warnings.append(
+                        f"Already exists (stock: {existing_info['current_quantity']}); row will be skipped."
+                    )
         else:
             status = "new"
             valid_new_rows += 1
@@ -401,11 +656,8 @@ def preview_import(
             "item_code": row["item_code"],
             "category": row["category"],
             "sub_category": row["sub_category"],
-            "model": row["model"],
-            "size": row["size"],
-            "mounting_type": row["mounting_type"],
-            "voltage": row["voltage"],
-            "material": row["material"],
+            "specs": row["specs"],
+            "spec_summary": row["spec_summary"],
             "location": row["location"],
             "quantity": row["quantity"],
             "price": row["price"],
@@ -418,13 +670,12 @@ def preview_import(
             "has_opening_tx": existing_info["has_opening_tx"] if existing_info else False,
         })
 
-    # Compute unique parent & child category resolution plan
     category_plan_map: dict[str, dict] = {}
     categories_to_create = 0
     subcategories_to_create = 0
 
     for parent_name, child_name in category_pairs_to_apply:
-        p_key = parent_name.strip().lower()
+        p_key = _norm_cat_key(parent_name)
         if p_key not in category_plan_map:
             existing_root = existing_roots.get(p_key)
             if not existing_root:
@@ -437,7 +688,7 @@ def preview_import(
             }
 
         if child_name:
-            c_key = child_name.strip().lower()
+            c_key = _norm_cat_key(child_name)
             sub_map = category_plan_map[p_key]["subcategories"]
             if c_key not in sub_map:
                 parent_id = category_plan_map[p_key]["existing_id"]
@@ -462,6 +713,9 @@ def preview_import(
 
     return {
         "upload_id": upload_id,
+        "item_type": item_type,
+        "item_type_label_fa": defn["label_fa"],
+        "item_type_label_en": defn["label_en"],
         "sheet_names": sheet_names,
         "selected_sheet": selected_sheet,
         "column_mapping": mapping,
@@ -492,14 +746,16 @@ def confirm_import(
     upload_id: str,
     upload_dir: str | Path,
     user_id: int,
+    item_type: str,
     sheet_name: str | None = None,
     column_mapping: dict | None = None,
     existing_policy: str = "skip",
 ) -> dict:
-    """Populate categories first, then create items and OPENING transactions."""
+    """Populate categories, items, type-specific spec records, and OPENING transactions."""
     preview = preview_import(
         upload_id=upload_id,
         upload_dir=upload_dir,
+        item_type=item_type,
         sheet_name=sheet_name,
         column_mapping=column_mapping,
         existing_policy=existing_policy,
@@ -517,18 +773,20 @@ def confirm_import(
     categories_created = 0
     subcategories_created = 0
 
-    # Step A: Scan category and sub_category columns and populate category table first.
     if applicable_rows:
         try:
             with db.transaction() as cur:
                 for row in applicable_rows:
-                    cat_key = row["category"].strip().lower()
-                    sub_key = (row["sub_category"] or "").strip().lower()
+                    cat_key = _norm_cat_key(row["category"])
+                    sub_key = _norm_cat_key(row["sub_category"])
                     pair_key = (cat_key, sub_key)
                     if pair_key in resolved_category_ids:
                         continue
-                    cat_id, created_parent, created_child = resolve_or_create_category_pair(
-                        cur, row["category"], row["sub_category"]
+                    cat_id, created_parent, created_child = resolve_category_for_spec_type(
+                        cur,
+                        item_type,
+                        row["category"],
+                        row["sub_category"],
                     )
                     resolved_category_ids[pair_key] = cat_id
                     if created_parent:
@@ -538,7 +796,6 @@ def confirm_import(
         except psycopg2.Error as exc:
             raise translate_pg_error(exc) from exc
 
-    # Step B: Process items & OPENING transactions independently per row.
     created_count = 0
     updated_count = 0
     skipped_count = 0
@@ -553,7 +810,7 @@ def confirm_import(
             results.append({
                 "row_number": row["row_number"],
                 "item_code": row["item_code"],
-                "model": row["model"],
+                "spec_summary": row["spec_summary"],
                 "status": "failed",
                 "reason": "; ".join(row["errors"]),
             })
@@ -564,14 +821,14 @@ def confirm_import(
             results.append({
                 "row_number": row["row_number"],
                 "item_code": row["item_code"],
-                "model": row["model"],
+                "spec_summary": row["spec_summary"],
                 "status": "skipped",
                 "reason": "Existing item skipped per import policy.",
             })
             continue
 
-        cat_key = row["category"].strip().lower()
-        sub_key = (row["sub_category"] or "").strip().lower()
+        cat_key = _norm_cat_key(row["category"])
+        sub_key = _norm_cat_key(row["sub_category"])
         category_id = resolved_category_ids[(cat_key, sub_key)]
 
         try:
@@ -579,28 +836,21 @@ def confirm_import(
                 if status == "new":
                     cur.execute(
                         """
-                        INSERT INTO item (
-                            item_code, category_id, model, size, mounting_type,
-                            voltage, material, location, description
-                        )
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        INSERT INTO item (item_code, category_id, location, description)
+                        VALUES (%s, %s, %s, %s)
                         RETURNING id;
                         """,
                         (
                             row["item_code"],
                             category_id,
-                            row["model"],
-                            row["size"],
-                            row["mounting_type"],
-                            row["voltage"],
-                            row["material"],
                             row["location"],
                             row["description"],
                         ),
                     )
                     item_id = cur.fetchone()["id"]
-                    tx_id = None
+                    upsert_spec_row(cur, item_type, item_id, row["specs"])
 
+                    tx_id = None
                     if row["quantity"] > 0:
                         cur.execute(
                             """
@@ -625,7 +875,7 @@ def confirm_import(
                     results.append({
                         "row_number": row["row_number"],
                         "item_code": row["item_code"],
-                        "model": row["model"],
+                        "spec_summary": row["spec_summary"],
                         "status": "created",
                         "item_id": item_id,
                         "category_id": category_id,
@@ -639,11 +889,6 @@ def confirm_import(
                         """
                         UPDATE item
                            SET category_id = %s,
-                               model = %s,
-                               size = %s,
-                               mounting_type = %s,
-                               voltage = %s,
-                               material = %s,
                                location = %s,
                                description = %s
                          WHERE item_code = %s
@@ -651,22 +896,18 @@ def confirm_import(
                         """,
                         (
                             category_id,
-                            row["model"],
-                            row["size"],
-                            row["mounting_type"],
-                            row["voltage"],
-                            row["material"],
                             row["location"],
                             row["description"],
                             row["item_code"],
                         ),
                     )
                     item_id = cur.fetchone()["id"]
+                    upsert_spec_row(cur, item_type, item_id, row["specs"])
                     updated_count += 1
                     results.append({
                         "row_number": row["row_number"],
                         "item_code": row["item_code"],
-                        "model": row["model"],
+                        "spec_summary": row["spec_summary"],
                         "status": "updated",
                         "item_id": item_id,
                         "category_id": category_id,
@@ -678,18 +919,20 @@ def confirm_import(
             results.append({
                 "row_number": row["row_number"],
                 "item_code": row["item_code"],
-                "model": row["model"],
+                "spec_summary": row["spec_summary"],
                 "status": "failed",
                 "reason": err.message,
             })
 
-    # Cleanup temp upload once confirmed
     try:
         resolve_uploaded_xlsx(upload_id, upload_dir).unlink(missing_ok=True)
     except Exception:
         pass
 
     return {
+        "item_type": item_type,
+        "item_type_label_fa": preview["item_type_label_fa"],
+        "item_type_label_en": preview["item_type_label_en"],
         "existing_policy": policy,
         "summary": {
             "total_rows": preview["summary"]["total_rows"],

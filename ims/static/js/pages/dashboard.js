@@ -1,4 +1,5 @@
 import { apiFetch } from "../api.js";
+import { getSpecSchema, itemTypeBadge } from "../spec_ui.js";
 import {
   escapeHtml,
   fmtDate,
@@ -69,8 +70,13 @@ function renderRecentMovements(list) {
           <div style="min-width:0;">
             <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
               ${txTypeBadge(tx.transaction_type)}
+              ${tx.item_type ? itemTypeBadge(tx.item_type, tx.item_type_label_fa) : ""}
               <strong class="mono">${escapeHtml(tx.item_code)}</strong>
-              ${tx.model ? `<span class="text-secondary">${escapeHtml(tx.model)}</span>` : ""}
+              ${
+                tx.display_name && tx.display_name !== tx.item_code
+                  ? `<span class="text-secondary">${escapeHtml(tx.display_name)}</span>`
+                  : ""
+              }
             </div>
             <div class="text-muted" style="font-size:0.78rem;margin-top:2px;">
               ${escapeHtml(tx.user_name)} • <span class="ltr">${escapeHtml(fmtDate(tx.created_at_jalali || tx.created_at))}</span>
@@ -100,8 +106,16 @@ function renderRecentItems(items) {
           (it) => `
         <div data-item-id="${it.id}" class="recent-item-row" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:10px;padding-bottom:8px;border-bottom:1px solid var(--border-color);">
           <div style="min-width:0;">
-            <div><strong class="mono">${escapeHtml(it.item_code)}</strong>${it.model ? ` — ${escapeHtml(it.model)}` : ""}</div>
-            <div class="text-muted" style="font-size:0.78rem;">${escapeHtml(it.category_path)} • محل: ${escapeHtml(it.location)}</div>
+            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+              ${itemTypeBadge(it.item_type, it.item_type_label_fa)}
+              <strong class="mono">${escapeHtml(it.item_code)}</strong>
+              ${
+                it.display_name && it.display_name !== it.item_code
+                  ? `<span class="text-secondary">— ${escapeHtml(it.display_name)}</span>`
+                  : ""
+              }
+            </div>
+            <div class="text-muted" style="font-size:0.78rem;margin-top:2px;">${escapeHtml(it.category_path)} • محل: ${escapeHtml(it.location)}</div>
           </div>
           <div>${stockBadge(it.quantity)}</div>
         </div>`

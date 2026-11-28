@@ -1,5 +1,6 @@
 import { apiFetch } from "./api.js";
 import { formatJalaliDateTime } from "./jalali_datepicker.js";
+import { getSpecSchema, itemTypeBadge, renderSpecDetailCards } from "./spec_ui.js";
 
 export function escapeHtml(str) {
   if (str === null || str === undefined) return "";
@@ -60,6 +61,24 @@ export function translateServerError(msg) {
   }
   if (/Selected role does not exist/i.test(text)) {
     return "نقش کاربری انتخاب‌شده یافت نشد.";
+  }
+  if (/outer diameter .* strictly greater than inner diameter/i.test(text) || /chk_o_ring_outer_gt_inner/i.test(text)) {
+    return "قطر خارجی اورینگ باید اکیداً بزرگ‌تر از قطر داخلی آن باشد.";
+  }
+  if (/valid numeric value in millimeters/i.test(text) || /\(mm\) must be greater than zero/i.test(text) || /\(mm\) is required/i.test(text)) {
+    return "ابعاد مکانیکی باید به‌صورت عدد مثبت و بر حسب میلی‌متر (mm) وارد شوند.";
+  }
+  if (/incompatible specifications/i.test(text) || /not match item category type/i.test(text)) {
+    return "مشخصات فنی واردشده با دسته‌بندی انتخابی هم‌خوانی ندارد.";
+  }
+  if (/Cannot change spec_type/i.test(text)) {
+    return "تغییر نوع مشخصات فنی زیردسته‌ای که دارای قطعه است مجاز نیست.";
+  }
+  if (/already assigned to/i.test(text)) {
+    return "این زیردسته به نوع قطعه دیگری اختصاص داده شده است.";
+  }
+  if (/valid leaf component category/i.test(text)) {
+    return "قطعه باید در یکی از زیردسته‌های معتبر (الکترونیک یا مکانیک) ثبت شود.";
   }
   return text;
 }
@@ -292,11 +311,13 @@ export async function openItemDetailModal(itemId) {
   });
 
   try {
-    const data = await apiFetch(`/api/items/${itemId}`);
+    const [data] = await Promise.all([apiFetch(`/api/items/${itemId}`), getSpecSchema()]);
     const item = data.item;
     const headerTitle = modal.querySelector(".modal-header .card-title");
     if (headerTitle) {
-      headerTitle.textContent = item.model ? `${item.item_code} — ${item.model}` : item.item_code;
+      headerTitle.textContent = item.display_name && item.display_name !== item.item_code
+        ? `${item.item_code} — ${item.display_name}`
+        : item.item_code;
     }
 
     const txRows = (item.transactions || [])
@@ -317,9 +338,14 @@ export async function openItemDetailModal(itemId) {
       )
       .join("");
 
+    const specCardsHtml = renderSpecDetailCards(item);
     const body = modal.querySelector(".modal-body");
     body.innerHTML = `
       <div class="spec-grid" style="margin-bottom: 16px;">
+        <div class="spec-item">
+          <div class="spec-label">نوع قطعه</div>
+          <div class="spec-val">${itemTypeBadge(item.item_type, item.item_type_label_fa)}</div>
+        </div>
         <div class="spec-item">
           <div class="spec-label">موجودی فعلی</div>
           <div class="spec-val num" style="font-size:1.05rem;">${stockBadge(item.quantity)}</div>
@@ -344,14 +370,7 @@ export async function openItemDetailModal(itemId) {
           <div class="spec-label">محل نگهداری</div>
           <div class="spec-val">${escapeHtml(item.location)}</div>
         </div>
-        <div class="spec-item">
-          <div class="spec-label">نوع نصب / سایز</div>
-          <div class="spec-val">${escapeHtml(item.mounting_type || "—")} / ${escapeHtml(item.size || "—")}</div>
-        </div>
-        <div class="spec-item">
-          <div class="spec-label">ولتاژ / متریال</div>
-          <div class="spec-val">${escapeHtml(item.voltage || "—")} / ${escapeHtml(item.material || "—")}</div>
-        </div>
+        ${specCardsHtml}
       </div>
 
       ${

@@ -5,9 +5,15 @@ import math
 import psycopg2
 from ims.db import AppError, get_db, translate_pg_error
 from ims.jalali import format_jalali_datetime, parse_filter_date_to_tehran_range
-from ims.services.item_service import CAT_INFO_CTE
+from ims.services.item_service import (
+    CAT_INFO_CTE,
+    ITEM_SPECS_JOIN_SQL,
+    ITEM_SPECS_SELECT_SQL,
+    hydrate_spec_fields,
+)
 from ims.utils import (
     clean_text,
+    normalize_persian_text,
     parse_optional_int,
     parse_optional_price,
     parse_positive_int,
@@ -82,21 +88,30 @@ def process_single_transaction(
             tx_row = dict(cur.fetchone())
 
             cur.execute(
-                """
+                f"""
+                {CAT_INFO_CTE}
                 SELECT
+                    i.id,
                     i.item_code,
-                    i.model,
+                    i.category_id,
+                    ci.category_name,
+                    ci.subcategory_name,
+                    ci.category_path,
+                    i.location,
                     inv.quantity AS current_quantity,
                     inv.weighted_avg_cost,
                     inv.last_purchase_cost,
-                    inv.updated_at AS inventory_updated_at
+                    inv.updated_at AS inventory_updated_at,
+                    {ITEM_SPECS_SELECT_SQL}
                   FROM item i
                   JOIN inventory inv ON inv.item_id = i.id
+                  JOIN cat_info ci ON ci.id = i.category_id
+                  {ITEM_SPECS_JOIN_SQL}
                  WHERE i.id = %s;
                 """,
                 (item_id,),
             )
-            inv_row = dict(cur.fetchone())
+            inv_row = hydrate_spec_fields(dict(cur.fetchone()))
             inv_row["inventory_updated_at_jalali"] = format_jalali_datetime(
                 inv_row.get("inventory_updated_at")
             )
@@ -114,16 +129,26 @@ def _fetch_item_context(item_id: int) -> dict | None:
     db = get_db()
     with db.cursor() as cur:
         cur.execute(
-            """
-            SELECT i.id, i.item_code, i.model, inv.quantity AS available_quantity
+            f"""
+            {CAT_INFO_CTE}
+            SELECT
+                i.id,
+                i.item_code,
+                ci.category_name,
+                ci.subcategory_name,
+                ci.category_path,
+                inv.quantity AS available_quantity,
+                {ITEM_SPECS_SELECT_SQL}
               FROM item i
               LEFT JOIN inventory inv ON inv.item_id = i.id
+              JOIN cat_info ci ON ci.id = i.category_id
+              {ITEM_SPECS_JOIN_SQL}
              WHERE i.id = %s;
             """,
             (item_id,),
         )
         row = cur.fetchone()
-    return dict(row) if row else None
+    return hydrate_spec_fields(dict(row)) if row else None
 
 
 def submit_cart_transactions(
@@ -234,7 +259,9 @@ def submit_cart_transactions(
             results.append({
                 "item_id": item_id,
                 "item_code": ctx.get("item_code"),
-                "model": ctx.get("model"),
+                "item_type": ctx.get("item_type"),
+                "display_name": ctx.get("display_name"),
+                "spec_summary": ctx.get("spec_summary"),
                 "available_quantity": ctx.get("available_quantity"),
                 "requested_quantity": bucket["total_quantity"] or None,
                 "merged_rows": bucket["merged_rows"],
@@ -258,7 +285,9 @@ def submit_cart_transactions(
             results.append({
                 "item_id": item_id,
                 "item_code": inv["item_code"],
-                "model": inv["model"],
+                "item_type": inv.get("item_type"),
+                "display_name": inv.get("display_name"),
+                "spec_summary": inv.get("spec_summary"),
                 "requested_quantity": bucket["total_quantity"],
                 "merged_rows": bucket["merged_rows"],
                 "status": "succeeded",
@@ -271,7 +300,9 @@ def submit_cart_transactions(
             results.append({
                 "item_id": item_id,
                 "item_code": ctx.get("item_code"),
-                "model": ctx.get("model"),
+                "item_type": ctx.get("item_type"),
+                "display_name": ctx.get("display_name"),
+                "spec_summary": ctx.get("spec_summary"),
                 "available_quantity": ctx.get("available_quantity"),
                 "requested_quantity": bucket["total_quantity"],
                 "merged_rows": bucket["merged_rows"],
@@ -312,11 +343,25 @@ def build_transaction_filter_sql(filters: dict) -> tuple[str, list]:
 
     search = clean_text(filters.get("search"))
     if search:
-        like = f"%{search}%"
-        clauses.append(
-            "(i.item_code ILIKE %s OR COALESCE(i.model, '') ILIKE %s OR COALESCE(t.description, '') ILIKE %s OR u.user_name ILIKE %s)"
-        )
-        params.extend([like, like, like, like])
+        norm = normalize_persian_text(search) or search
+        like = f"%{norm}%"
+        search_exprs = [
+            "i.item_code ILIKE %s",
+            "COALESCE(t.description, '') ILIKE %s",
+            "u.user_name ILIKE %s",
+            "COALESCE(ei.model, '') ILIKE %s",
+            "COALESCE(ei.package_size, '') ILIKE %s",
+            "COALESCE(ei.material, '') ILIKE %s",
+            "COALESCE(sp.material, '') ILIKE %s",
+            "COALESCE(sc.material, '') ILIKE %s",
+            "COALESCE(sc.head_type, '') ILIKE %s",
+            "COALESCE(sc.drive_type, '') ILIKE %s",
+            "COALESCE(nu.material, '') ILIKE %s",
+            "COALESCE(wa.material, '') ILIKE %s",
+            "COALESCE(ori.material, '') ILIKE %s",
+        ]
+        clauses.append("(" + " OR ".join(search_exprs) + ")")
+        params.extend([like] * len(search_exprs))
 
     tx_type_raw = clean_text(filters.get("transaction_type"))
     if tx_type_raw:
@@ -359,6 +404,7 @@ def list_transactions(filters: dict, paginate: bool = True) -> dict:
               FROM inventory_transaction t
               JOIN item i ON i.id = t.item_id
               JOIN app_user u ON u.id = t.user_id
+              {ITEM_SPECS_JOIN_SQL}
             {where_sql};
             """,
             tuple(params),
@@ -378,7 +424,6 @@ def list_transactions(filters: dict, paginate: bool = True) -> dict:
                 u.last_name,
                 t.item_id,
                 i.item_code,
-                i.model,
                 ci.category_name,
                 ci.subcategory_name,
                 ci.category_path,
@@ -391,18 +436,20 @@ def list_transactions(filters: dict, paginate: bool = True) -> dict:
                 t.transaction_cost_snapshot,
                 t.created_at,
                 t.created_at_jalali,
-                t.description
+                t.description,
+                {ITEM_SPECS_SELECT_SQL}
               FROM inventory_transaction t
               JOIN item i ON i.id = t.item_id
               JOIN cat_info ci ON ci.id = i.category_id
               JOIN app_user u ON u.id = t.user_id
+              {ITEM_SPECS_JOIN_SQL}
             {where_sql}
             ORDER BY t.created_at DESC, t.id DESC
             {limit_sql};
             """,
             tuple(query_params),
         )
-        rows = [dict(r) for r in cur.fetchall()]
+        rows = [hydrate_spec_fields(dict(r)) for r in cur.fetchall()]
 
     total_pages = max(1, math.ceil(total / page_size)) if paginate else 1
     return {

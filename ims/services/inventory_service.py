@@ -2,7 +2,12 @@
 
 from ims.db import get_db
 from ims.jalali import format_jalali_datetime, parse_filter_date_to_tehran_range
-from ims.services.item_service import CAT_INFO_CTE
+from ims.services.item_service import (
+    CAT_INFO_CTE,
+    ITEM_SPECS_JOIN_SQL,
+    ITEM_SPECS_SELECT_SQL,
+    hydrate_spec_fields,
+)
 from ims.utils import clean_text
 
 
@@ -62,7 +67,8 @@ def get_dashboard_summary() -> dict:
                 t.id,
                 t.item_id,
                 i.item_code,
-                i.model,
+                ci.category_name,
+                ci.subcategory_name,
                 ci.category_path,
                 t.transaction_type,
                 t.quantity,
@@ -72,16 +78,18 @@ def get_dashboard_summary() -> dict:
                 t.transaction_cost_snapshot,
                 t.created_at,
                 t.created_at_jalali,
-                u.user_name
+                u.user_name,
+                {ITEM_SPECS_SELECT_SQL}
             FROM inventory_transaction t
             JOIN item i ON i.id = t.item_id
             JOIN cat_info ci ON ci.id = i.category_id
             JOIN app_user u ON u.id = t.user_id
+            {ITEM_SPECS_JOIN_SQL}
             ORDER BY t.created_at DESC, t.id DESC
             LIMIT 5;
             """
         )
-        recent_movements = [dict(r) for r in cur.fetchall()]
+        recent_movements = [hydrate_spec_fields(dict(r)) for r in cur.fetchall()]
 
         cur.execute(
             f"""
@@ -89,27 +97,26 @@ def get_dashboard_summary() -> dict:
             SELECT
                 i.id,
                 i.item_code,
-                i.model,
                 i.location,
-                i.mounting_type,
-                i.size,
                 ci.category_name,
                 ci.subcategory_name,
                 ci.category_path,
                 inv.quantity,
                 inv.weighted_avg_cost,
                 inv.last_purchase_cost,
-                i.created_at
+                i.created_at,
+                {ITEM_SPECS_SELECT_SQL}
             FROM item i
             JOIN inventory inv ON inv.item_id = i.id
             JOIN cat_info ci ON ci.id = i.category_id
+            {ITEM_SPECS_JOIN_SQL}
             ORDER BY i.created_at DESC, i.id DESC
             LIMIT 5;
             """
         )
         recent_items = []
         for r in cur.fetchall():
-            item = dict(r)
+            item = hydrate_spec_fields(dict(r))
             item["created_at_jalali"] = format_jalali_datetime(item.get("created_at"))
             recent_items.append(item)
 

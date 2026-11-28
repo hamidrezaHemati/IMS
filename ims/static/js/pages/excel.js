@@ -1,20 +1,6 @@
 import { apiFetch } from "../api.js";
-import { escapeHtml, fmtCost, fmtPriceHtml, fmtQty, toast, translateServerError } from "../ui.js";
-
-const IMPORT_FIELDS = [
-  { key: "item_code", label: "کد قطعه", required: true },
-  { key: "category", label: "دسته‌بندی اصلی", required: true },
-  { key: "sub_category", label: "زیردسته", required: false },
-  { key: "model", label: "مدل / پارت نامبر / مقدار", required: false },
-  { key: "location", label: "محل نگهداری / کشو", required: true },
-  { key: "quantity", label: "موجودی اولیه", required: true },
-  { key: "price", label: "قیمت واحد (ریال)", required: false },
-  { key: "size", label: "سایز / پکیج", required: false },
-  { key: "mounting_type", label: "نوع نصب (SMD/DIP)", required: false },
-  { key: "voltage", label: "ولتاژ", required: false },
-  { key: "material", label: "متریال", required: false },
-  { key: "description", label: "توضیحات", required: false },
-];
+import { getSpecSchema, itemTypeBadge } from "../spec_ui.js";
+import { escapeHtml, fmtPriceHtml, fmtQty, toast, translateServerError } from "../ui.js";
 
 const STATUS_FA = {
   new: "جدید",
@@ -28,11 +14,14 @@ const STATUS_FA = {
 };
 
 const POLICY_EXPLANATION_FA = {
-  skip: "سیاست امن پیش‌فرض: فقط کدهای قطعه جدید ایجاد می‌شوند و موجودی اولیه آن‌ها از طریق تراکنش OPENING ثبت می‌شود (با مقداردهی قیمت میانگین و آخرین قیمت خرید بر حسب ریال در صورت وجود قیمت). اقلامی که از قبل در سیستم وجود دارند نادیده گرفته می‌شوند و هیچ تغییری در موجودی یا قیمت آن‌ها ایجاد نخواهد شد.",
-  update_metadata: "اقلام جدید ایجاد شده و موجودی اولیه آن‌ها از طریق تراکنش OPENING ثبت می‌شود. برای کدهای تکراری موجود در سیستم، فقط مشخصات فنی قطعه به‌روزرسانی می‌شود و موجودی فعلی، قیمت‌ها و تاریخچه تراکنش‌های OPENING هرگز بازنویسی نخواهند شد.",
+  skip: "سیاست امن پیش‌فرض: فقط کدهای قطعه جدید با مشخصات نوع انتخاب‌شده ایجاد می‌شوند و موجودی اولیه آن‌ها از طریق تراکنش OPENING ثبت می‌گردد. اقلامی که از قبل در سیستم وجود دارند نادیده گرفته می‌شوند.",
+  update_metadata: "اقلام جدید ایجاد شده و موجودی اولیه آن‌ها ثبت می‌شود. برای کدهای موجود هم‌نوع در سیستم، فقط مشخصات فنی به‌روزرسانی می‌شود و موجودی، قیمت‌ها و تاریخچه تراکنش‌ها تغییر نمی‌کنند.",
 };
 
-let uploadId = null;
+let specSchema = null;
+let activeItemType = null;
+let activeUploadId = null;
+let activeFieldsMeta = [];
 let lastPreview = null;
 let rowFilterStatus = "ALL";
 
@@ -41,15 +30,10 @@ function translateImportMessage(msg) {
   const text = String(msg);
   if (/Missing item_code/i.test(text)) return "کد قطعه وارد نشده است.";
   if (/Missing category/i.test(text)) return "دسته‌بندی اصلی وارد نشده است.";
+  if (/Missing sub_category/i.test(text)) return "زیردسته وارد نشده است.";
   if (/Missing model/i.test(text)) return "مدل قطعه وارد نشده است.";
   if (/Missing location/i.test(text)) return "محل نگهداری وارد نشده است.";
-  const mountMatch = text.match(/Invalid mounting type '([^']+)'/i);
-  if (mountMatch) {
-    return `نوع نصب '${mountMatch[1]}' نامعتبر است (مقادیر مجاز: SMD یا DIP).`;
-  }
-  if (/Duplicate item_code/i.test(text)) {
-    return "کد قطعه در فایل اکسل تکراری است.";
-  }
+  if (/Duplicate item_code/i.test(text)) return "کد قطعه در فایل اکسل تکراری است.";
   if (/Quantity is 0:/i.test(text)) {
     return "مقدار صفر است: قطعه با موجودی ۰ ایجاد می‌شود و تراکنش OPENING ثبت نخواهد شد.";
   }
@@ -68,51 +52,15 @@ function translateImportMessage(msg) {
   if (/Specifications updated; stock and transactions unchanged/i.test(text)) {
     return "مشخصات به‌روزرسانی شد؛ موجودی و تراکنش‌ها بدون تغییر ماندند.";
   }
-  if (/quantity must be/i.test(text)) {
-    return "مقدار تعداد باید یک عدد صحیح نامنفی باشد.";
+  if (/already assigned to/i.test(text)) {
+    return "این زیردسته از قبل به نوع قطعه دیگری اختصاص دارد و نمی‌تواند هم‌زمان برای این نوع قطعه استفاده شود.";
   }
-  if (/price must be/i.test(text)) {
-    return "قیمت باید یک عدد معتبر و نامنفی باشد.";
+  if (/already has items directly assigned/i.test(text)) {
+    return "این دسته‌بندی مستقیماً دارای قطعه است و نمی‌تواند زیردسته بپذیرد.";
   }
+  if (/quantity must be/i.test(text)) return "مقدار تعداد باید یک عدد صحیح نامنفی باشد.";
+  if (/price must be/i.test(text)) return "قیمت باید یک عدد معتبر و نامنفی باشد.";
   return translateServerError(text);
-}
-
-function renderMappingControls(info) {
-  const sheetSel = document.getElementById("imp-sheet");
-  sheetSel.innerHTML = (info.sheet_names || [])
-    .map(
-      (s) =>
-        `<option value="${escapeHtml(s)}" ${s === info.selected_sheet ? "selected" : ""}>${escapeHtml(s)}</option>`
-    )
-    .join("");
-
-  const headers = info.headers || [];
-  const suggested = info.suggested_mapping || {};
-  const grid = document.getElementById("imp-mapping-grid");
-
-  grid.innerHTML = IMPORT_FIELDS.map((f) => {
-    const opts = [
-      `<option value="">${f.required ? "انتخاب ستون..." : "(نگاشت نشده)"}</option>`,
-      ...headers.map(
-        (h) =>
-          `<option value="${escapeHtml(h)}" ${suggested[f.key] === h ? "selected" : ""}>${escapeHtml(h)}</option>`
-      ),
-    ].join("");
-    return `
-      <div class="field">
-        <label for="map-${f.key}">${escapeHtml(f.label)}${f.required ? " *" : ""}</label>
-        <select id="map-${f.key}" class="select">${opts}</select>
-      </div>`;
-  }).join("");
-}
-
-function collectMapping() {
-  const mapping = {};
-  IMPORT_FIELDS.forEach((f) => {
-    const val = document.getElementById(`map-${f.key}`).value;
-    mapping[f.key] = val || null;
-  });
-  return mapping;
 }
 
 function statusBadge(status) {
@@ -129,6 +77,125 @@ function statusBadge(status) {
   return `<span class="badge ${map[status] || "badge-neutral"}">${escapeHtml(STATUS_FA[status] || status)}</span>`;
 }
 
+function renderImportTypeCards() {
+  const grid = document.getElementById("imp-cards-grid");
+  if (!specSchema || !specSchema.order) {
+    grid.innerHTML = `<div class="alert alert-danger">امکان دریافت ساختار انواع قطعات وجود ندارد.</div>`;
+    return;
+  }
+
+  grid.innerHTML = specSchema.order
+    .map((key) => {
+      const def = specSchema.types[key];
+      const fieldNotes = def.fields
+        .map((f) => {
+          const star = f.required ? " *" : "";
+          const unit = f.kind === "mm" || f.kind === "computed_mm" ? " (mm)" : "";
+          const computed = f.kind === "computed_mm" ? " [خودکار]" : "";
+          return `<span class="badge ${f.required ? "badge-info" : "badge-neutral"}">${escapeHtml(
+            f.label_fa + unit + star + computed
+          )}</span>`;
+        })
+        .join(" ");
+
+      const typeHint =
+        key === "o_ring"
+          ? "نام دسته/زیردسته می‌تواند فارسی یا انگلیسی باشد (مثلاً مکانیک > اورینگ). سطح مقطع به صورت خودکار محاسبه می‌شود."
+          : key === "electronic_item"
+          ? "ستون زیردسته با نام دلخواه فارسی یا انگلیسی (مثلاً قطعات الکترونیک > مقاومت یا Electronic > Resistor) به‌صورت خودکار ایجاد می‌شود؛ سایز پکیج در ستون package_size ثبت می‌گردد."
+          : "نام دسته‌بندی و زیردسته مطابق فایل اکسل (فارسی، انگلیسی یا ترکیبی؛ مثلاً مکانیک > پیچ یا Mechanical > Screw) ایجاد می‌شود. ابعاد باید عدد خالص بر حسب میلی‌متر (mm) باشند.";
+
+      return `
+      <article class="card import-type-card ${activeItemType === key ? "is-active-import" : ""}" data-import-card="${escapeHtml(key)}">
+        <div class="card-header">
+          <div>
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+              ${itemTypeBadge(key, def.label_fa)}
+              <span class="text-muted mono" style="font-size:0.78rem;">${escapeHtml(def.label_en)}</span>
+            </div>
+            <div class="text-muted" style="font-size:0.78rem;margin-top:4px;">
+              دسته پیش‌فرض: ${escapeHtml(def.root_category)} &gt; ${escapeHtml(def.default_subcategory)}
+            </div>
+          </div>
+          <a href="/api/import/template/${encodeURIComponent(key)}" class="btn btn-sm">فایل نمونه (.xlsx)</a>
+        </div>
+        <div class="card-body" style="display:flex;flex-direction:column;gap:12px;">
+          <div style="display:flex;flex-wrap:wrap;gap:6px;">${fieldNotes}</div>
+          <p class="text-secondary" style="font-size:0.81rem;margin:0;">${escapeHtml(typeHint)}</p>
+          <div class="dropzone" data-dropzone="${escapeHtml(key)}">
+            <input type="file" accept=".xlsx" class="hidden" data-file-input="${escapeHtml(key)}">
+            <p style="font-weight:700;margin:0;">بارگذاری فایل اکسل ${escapeHtml(def.label_fa)} (.xlsx)</p>
+            <p class="text-muted" style="font-size:0.79rem;margin:4px 0 0;" data-card-status="${escapeHtml(key)}">
+              فایل را اینجا رها کنید یا کلیک کنید
+            </p>
+          </div>
+        </div>
+      </article>`;
+    })
+    .join("");
+
+  grid.querySelectorAll("[data-dropzone]").forEach((dz) => {
+    const key = dz.dataset.dropzone;
+    const input = dz.querySelector(`[data-file-input="${key}"]`);
+    dz.addEventListener("click", () => input.click());
+    input.addEventListener("change", () => handleImportUpload(key, input.files[0]));
+    dz.addEventListener("dragover", (e) => {
+      e.preventDefault();
+      dz.classList.add("dragover");
+    });
+    dz.addEventListener("dragleave", () => dz.classList.remove("dragover"));
+    dz.addEventListener("drop", (e) => {
+      e.preventDefault();
+      dz.classList.remove("dragover");
+      if (e.dataTransfer.files.length) {
+        handleImportUpload(key, e.dataTransfer.files[0]);
+      }
+    });
+  });
+}
+
+function renderMappingControls(info) {
+  activeFieldsMeta = info.fields || [];
+  const sheetSel = document.getElementById("imp-sheet");
+  sheetSel.innerHTML = (info.sheet_names || [])
+    .map(
+      (s) =>
+        `<option value="${escapeHtml(s)}" ${s === info.selected_sheet ? "selected" : ""}>${escapeHtml(s)}</option>`
+    )
+    .join("");
+
+  const headers = info.headers || [];
+  const suggested = info.suggested_mapping || {};
+  const grid = document.getElementById("imp-mapping-grid");
+
+  grid.innerHTML = activeFieldsMeta
+    .map((f) => {
+      const opts = [
+        `<option value="">${f.required ? "انتخاب ستون..." : "(نگاشت نشده)"}</option>`,
+        ...headers.map(
+          (h) =>
+            `<option value="${escapeHtml(h)}" ${suggested[f.key] === h ? "selected" : ""}>${escapeHtml(h)}</option>`
+        ),
+      ].join("");
+
+      return `
+        <div class="field">
+          <label for="map-${escapeHtml(f.key)}">${escapeHtml(f.label)}${f.required ? " *" : ""}</label>
+          <select id="map-${escapeHtml(f.key)}" class="select">${opts}</select>
+        </div>`;
+    })
+    .join("");
+}
+
+function collectMapping() {
+  const mapping = {};
+  activeFieldsMeta.forEach((f) => {
+    const el = document.getElementById(`map-${f.key}`);
+    mapping[f.key] = el && el.value ? el.value : null;
+  });
+  return mapping;
+}
+
 function renderPreview(preview) {
   lastPreview = preview;
   document.getElementById("imp-preview-section").classList.remove("hidden");
@@ -136,7 +203,7 @@ function renderPreview(preview) {
 
   const policyText = POLICY_EXPLANATION_FA[preview.existing_policy] || preview.policy_explanation;
   document.getElementById("imp-policy-banner").innerHTML = `
-    <strong>سیاست ورود اطلاعات:</strong> ${escapeHtml(policyText)}
+    <strong>${escapeHtml(preview.item_type_label_fa || activeItemType)} — سیاست ورود اطلاعات:</strong> ${escapeHtml(policyText)}
   `;
 
   const s = preview.summary;
@@ -145,7 +212,7 @@ function renderPreview(preview) {
     <div class="card kpi-card"><span class="kpi-label">اقلام جدید آماده ثبت</span><span class="kpi-value text-success">${fmtQty(s.valid_new_rows)}</span><span class="kpi-note">${fmtQty(s.zero_quantity_new_rows)} قلم با موجودی صفر</span></div>
     <div class="card kpi-card"><span class="kpi-label">اقلام موجود در سیستم</span><span class="kpi-value">${fmtQty(s.existing_rows)}</span><span class="kpi-note">رد شده: ${fmtQty(s.existing_skipped_rows)} • به‌روزرسانی مشخصات: ${fmtQty(s.existing_updated_rows)}</span></div>
     <div class="card kpi-card kpi-card-accent"><span class="kpi-label">کدهای تکراری در فایل</span><span class="kpi-value ${s.duplicate_rows > 0 ? "text-warning" : ""}">${fmtQty(s.duplicate_rows)}</span></div>
-    <div class="card kpi-card"><span class="kpi-label">نامعتبر / ناقص</span><span class="kpi-value ${s.invalid_rows > 0 ? "text-danger" : ""}">${fmtQty(s.invalid_rows)}</span><span class="kpi-note">${fmtQty(s.missing_category_rows)} ردیف بدون دسته‌بندی</span></div>
+    <div class="card kpi-card"><span class="kpi-label">نامعتبر / ناقص</span><span class="kpi-value ${s.invalid_rows > 0 ? "text-danger" : ""}">${fmtQty(s.invalid_rows)}</span><span class="kpi-note">${fmtQty(s.missing_category_rows)} ردیف بدون دسته‌بندی مجاز</span></div>
     <div class="card kpi-card kpi-card-accent"><span class="kpi-label">دسته‌بندی‌های جدید</span><span class="kpi-value">${fmtQty(s.categories_to_create)} / ${fmtQty(s.subcategories_to_create)}</span><span class="kpi-note">دسته اصلی / زیردسته</span></div>
   `;
 
@@ -175,7 +242,9 @@ function renderPreview(preview) {
   }
 
   renderPreviewRows();
-  document.getElementById("imp-confirm-btn").disabled = s.will_import_rows === 0;
+  const confirmBtn = document.getElementById("imp-confirm-btn");
+  confirmBtn.disabled = s.will_import_rows === 0;
+  confirmBtn.textContent = "تایید و اجرای نهایی ورود اطلاعات";
 }
 
 function renderPreviewRows() {
@@ -185,7 +254,7 @@ function renderPreviewRows() {
   );
   const tbody = document.getElementById("imp-preview-tbody");
   if (!rows.length) {
-    tbody.innerHTML = `<tr><td colspan="10" class="empty-state">ردیفی با این وضعیت وجود ندارد.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="9" class="empty-state">ردیفی با این وضعیت وجود ندارد.</td></tr>`;
     return;
   }
 
@@ -202,8 +271,7 @@ function renderPreviewRows() {
         <td>${statusBadge(r.status)}</td>
         <td class="mono"><strong>${escapeHtml(r.item_code || "—")}</strong></td>
         <td>${escapeHtml(catText)}</td>
-        <td>${escapeHtml(r.model || "—")}</td>
-        <td>${escapeHtml(r.mounting_type || "—")} / ${escapeHtml(r.size || "—")}</td>
+        <td>${escapeHtml(r.spec_summary || "—")}</td>
         <td>${escapeHtml(r.location || "—")}</td>
         <td class="text-right num">${r.quantity !== null && r.quantity !== undefined ? fmtQty(r.quantity) : "—"}</td>
         <td class="text-right num">${fmtPriceHtml(r.price, "—")}</td>
@@ -232,55 +300,76 @@ function renderImportResults(res) {
     <tr>
       <td class="num">${r.row_number}</td>
       <td class="mono"><strong>${escapeHtml(r.item_code || "—")}</strong></td>
-      <td>${escapeHtml(r.model || "—")}</td>
+      <td>${itemTypeBadge(res.item_type, res.item_type_label_fa)} ${escapeHtml(r.spec_summary || "—")}</td>
       <td>${statusBadge(r.status)}</td>
       <td class="text-right num">${r.quantity !== undefined && r.quantity !== null ? fmtQty(r.quantity) : "—"}</td>
       <td class="text-right num">${fmtPriceHtml(r.price, "—")}</td>
-      <td class="text-secondary">${escapeHtml(r.reason ? translateImportMessage(r.reason) : (r.opening_transaction_id ? `تراکنش OPENING شماره ${r.opening_transaction_id}` : "قطعه ایجاد شد (موجودی ۰)"))}</td>
+      <td class="text-secondary">${escapeHtml(
+        r.reason
+          ? translateImportMessage(r.reason)
+          : r.opening_transaction_id
+          ? `تراکنش OPENING شماره ${r.opening_transaction_id}`
+          : "قطعه ایجاد شد (موجودی ۰)"
+      )}</td>
     </tr>`
     )
     .join("");
 }
 
-async function handleImportUpload(file) {
-  if (!file) return;
+async function handleImportUpload(itemType, file) {
+  if (!file || !itemType) return;
   const fd = new FormData();
   fd.append("file", file);
+  fd.append("item_type", itemType);
+
   try {
     const info = await apiFetch("/api/import/upload", { method: "POST", body: fd });
-    uploadId = info.upload_id;
+    activeItemType = itemType;
+    activeUploadId = info.upload_id;
+    lastPreview = null;
+    rowFilterStatus = "ALL";
+
+    document.querySelectorAll("[data-import-card]").forEach((card) => {
+      card.classList.toggle("is-active-import", card.dataset.importCard === itemType);
+    });
+    const cardStatus = document.querySelector(`[data-card-status="${itemType}"]`);
+    if (cardStatus) {
+      cardStatus.textContent = `بارگذاری‌شده: ${file.name} (${fmtQty(info.total_data_rows)} ردیف)`;
+    }
+
+    document.getElementById("imp-active-type-label").textContent = info.item_type_label_fa || itemType;
+    document.getElementById("imp-active-file-badge").textContent = `${file.name} (${fmtQty(info.total_data_rows)} ردیف)`;
+
     renderMappingControls(info);
     document.getElementById("imp-config-panel").classList.remove("hidden");
     document.getElementById("imp-preview-section").classList.add("hidden");
     document.getElementById("imp-result-section").classList.add("hidden");
-    toast(`فایل ${file.name} (${info.total_data_rows} ردیف داده) بارگذاری شد.`, "success");
+    document.getElementById("imp-config-panel").scrollIntoView({ behavior: "smooth", block: "start" });
+
+    toast(`فایل ${file.name} برای «${info.item_type_label_fa}» بارگذاری شد.`, "success");
   } catch (err) {
     toast(err.message, "error");
   }
 }
 
-document.addEventListener("DOMContentLoaded", () => {
-  const dropzone = document.getElementById("imp-dropzone");
-  const fileInput = document.getElementById("imp-file-input");
-  dropzone.addEventListener("click", () => fileInput.click());
-  fileInput.addEventListener("change", () => handleImportUpload(fileInput.files[0]));
-  dropzone.addEventListener("dragover", (e) => {
-    e.preventDefault();
-    dropzone.classList.add("dragover");
-  });
-  dropzone.addEventListener("dragleave", () => dropzone.classList.remove("dragover"));
-  dropzone.addEventListener("drop", (e) => {
-    e.preventDefault();
-    dropzone.classList.remove("dragover");
-    if (e.dataTransfer.files.length) handleImportUpload(e.dataTransfer.files[0]);
-  });
+document.addEventListener("DOMContentLoaded", async () => {
+  try {
+    specSchema = await getSpecSchema();
+    renderImportTypeCards();
+  } catch (err) {
+    toast(err.message, "error");
+  }
 
   document.getElementById("imp-sheet").addEventListener("change", async (e) => {
-    if (!uploadId) return;
+    if (!activeUploadId || !activeItemType) return;
     try {
       const info = await apiFetch("/api/import/inspect", {
         method: "POST",
-        body: { upload_id: uploadId, sheet_name: e.target.value },
+        body: {
+          upload_id: activeUploadId,
+          item_type: activeItemType,
+          sheet_name: e.target.value,
+        },
       });
       renderMappingControls(info);
     } catch (err) {
@@ -289,12 +378,13 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   document.getElementById("imp-preview-btn").addEventListener("click", async () => {
-    if (!uploadId) return;
+    if (!activeUploadId || !activeItemType) return;
     try {
       const preview = await apiFetch("/api/import/preview", {
         method: "POST",
         body: {
-          upload_id: uploadId,
+          upload_id: activeUploadId,
+          item_type: activeItemType,
           sheet_name: document.getElementById("imp-sheet").value,
           column_mapping: collectMapping(),
           existing_policy: document.getElementById("imp-policy").value,
@@ -316,7 +406,7 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   document.getElementById("imp-confirm-btn").addEventListener("click", async (e) => {
-    if (!uploadId) return;
+    if (!activeUploadId || !activeItemType) return;
     const btn = e.currentTarget;
     btn.disabled = true;
     btn.textContent = "در حال ورود اطلاعات...";
@@ -324,13 +414,14 @@ document.addEventListener("DOMContentLoaded", () => {
       const res = await apiFetch("/api/import/confirm", {
         method: "POST",
         body: {
-          upload_id: uploadId,
+          upload_id: activeUploadId,
+          item_type: activeItemType,
           sheet_name: document.getElementById("imp-sheet").value,
           column_mapping: collectMapping(),
           existing_policy: document.getElementById("imp-policy").value,
         },
       });
-      uploadId = null;
+      activeUploadId = null;
       renderImportResults(res);
       toast(`ورود اطلاعات با موفقیت انجام شد: ${res.summary.imported_items} قلم ثبت گردید.`, "success");
     } catch (err) {

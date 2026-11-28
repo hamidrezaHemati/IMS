@@ -1,15 +1,21 @@
 import { apiFetch } from "./api.js";
+import {
+  collectDynamicSpecForm,
+  getSpecSchema,
+  renderDynamicSpecForm,
+} from "./spec_ui.js";
 import { closeModal, escapeHtml, openModal, toast } from "./ui.js";
 
 /**
  * Open modal to create or edit a category / subcategory.
  */
-export function openCategoryModal({
+export async function openCategoryModal({
   allCategories = [],
   existing = null,
   defaultParentId = null,
   onSaved = null,
 }) {
+  const schema = await getSpecSchema();
   const selectedParent = existing ? existing.parent_id : defaultParentId;
   const parentOptions = [
     `<option value="">بدون والد (دسته‌بندی اصلی)</option>`,
@@ -23,6 +29,19 @@ export function openCategoryModal({
       ),
   ].join("");
 
+  const specOptions = [
+    `<option value="">تشخیص خودکار از نام یا دسته والد (پیش‌فرض)</option>`,
+    ...(schema?.order || []).map((key) => {
+      const def = schema.types[key];
+      const sel = existing && existing.spec_type === key ? "selected" : "";
+      return `<option value="${escapeHtml(key)}" ${sel}>${escapeHtml(def.label_fa)} (${escapeHtml(
+        def.label_en
+      )})</option>`;
+    }),
+  ].join("");
+
+  const hasAssignedItems = Boolean(existing && (existing.direct_item_count || 0) > 0);
+
   const modal = openModal({
     title: existing ? "ویرایش دسته‌بندی" : "دسته‌بندی جدید",
     bodyHtml: `
@@ -34,6 +53,17 @@ export function openCategoryModal({
         <div class="field">
           <label for="m-cat-parent">دسته والد</label>
           <select id="m-cat-parent" class="select">${parentOptions}</select>
+        </div>
+        <div id="m-cat-spec-wrap" class="field ${selectedParent ? "" : "hidden"}">
+          <label for="m-cat-spec-type">نوع مشخصات فنی قطعه (برای زیردسته‌ها)</label>
+          <select id="m-cat-spec-type" class="select" ${hasAssignedItems ? "disabled" : ""}>${specOptions}</select>
+          <span class="text-muted" style="font-size:0.78rem;">
+            ${
+              hasAssignedItems
+                ? "به دلیل وجود قطعه در این زیردسته، تغییر نوع مشخصات فنی مجاز نیست (تغییر نام بلامانع است)."
+                : "برای نام‌های دلخواه فارسی یا انگلیسی می‌توانید نوع جدول مشخصات (الکترونیک، پیچ، مهره و...) را مشخص کنید."
+            }
+          </span>
         </div>
         <div class="field">
           <label for="m-cat-desc">توضیحات</label>
@@ -47,13 +77,24 @@ export function openCategoryModal({
     `,
   });
 
+  const parentSel = document.getElementById("m-cat-parent");
+  const specWrap = document.getElementById("m-cat-spec-wrap");
+  const specSel = document.getElementById("m-cat-spec-type");
+  parentSel.addEventListener("change", () => {
+    const hasParent = Boolean(parentSel.value);
+    specWrap.classList.toggle("hidden", !hasParent);
+  });
+
   modal.querySelector("#cat-modal-form").addEventListener("submit", async (e) => {
     e.preventDefault();
     const payload = {
       name: document.getElementById("m-cat-name").value,
-      parent_id: document.getElementById("m-cat-parent").value || null,
+      parent_id: parentSel.value || null,
       description: document.getElementById("m-cat-desc").value,
     };
+    if (parentSel.value && !hasAssignedItems && specSel.value) {
+      payload.spec_type = specSel.value;
+    }
     try {
       let resp;
       if (existing) {
@@ -72,16 +113,17 @@ export function openCategoryModal({
 }
 
 /**
- * Open modal to create or edit an item record (inventory initialized by PostgreSQL trigger).
+ * Open category-aware dynamic modal to create or edit an electronic or mechanical item.
  */
-export function openItemModal({
+export async function openItemModal({
   allCategories = [],
   existing = null,
   onSaved = null,
   onNeedCategory = null,
 }) {
-  if (!allCategories.length) {
-    toast("پیش از افزودن قطعه، حداقل یک دسته‌بندی ایجاد کنید.", "warning");
+  const leafCategories = allCategories.filter((c) => c.is_leaf && c.spec_type);
+  if (!leafCategories.length) {
+    toast("پیش از افزودن قطعه، حداقل یک زیردسته معتبر ایجاد کنید.", "warning");
     if (onNeedCategory) {
       onNeedCategory();
     } else {
@@ -90,14 +132,23 @@ export function openItemModal({
     return;
   }
 
-  const catOptions = allCategories
-    .map(
-      (c) =>
-        `<option value="${c.id}" ${existing && existing.category_id === c.id ? "selected" : ""}>${escapeHtml(
-          c.full_path
+  await getSpecSchema();
+
+  const roots = allCategories.filter((c) => c.parent_id === null);
+  const initialCategory = existing
+    ? allCategories.find((c) => c.id === existing.category_id)
+    : null;
+  const initialRootId = initialCategory ? initialCategory.root_id : roots[0]?.id || "";
+
+  const rootOptions = [
+    `<option value="">انتخاب دسته‌بندی اصلی...</option>`,
+    ...roots.map(
+      (r) =>
+        `<option value="${r.id}" ${Number(initialRootId) === r.id ? "selected" : ""}>${escapeHtml(
+          r.name
         )}</option>`
-    )
-    .join("");
+    ),
+  ].join("");
 
   const modal = openModal({
     title: existing ? `ویرایش قطعه: ${existing.item_code}` : "افزودن قطعه جدید",
@@ -106,47 +157,30 @@ export function openItemModal({
       <div class="alert alert-info" style="margin-bottom:12px;">
         ${
           existing
-            ? "ویرایش فقط مشخصات فنی قطعه را به‌روزرسانی می‌کند. تغییر موجودی و قیمت تنها از طریق تراکنش‌ها انجام می‌شود."
-            : "با ثبت قطعه جدید، ردیف موجودی خالی (تعداد ۰) به صورت خودکار توسط تریگر PostgreSQL ایجاد می‌شود. افزایش موجودی از طریق ثبت تراکنش انجام می‌شود."
+            ? "ویرایش فقط اطلاعات و مشخصات فنی قطعه را به‌روزرسانی می‌کند. تغییر موجودی و قیمت تنها از طریق تراکنش‌ها انجام می‌شود."
+            : "با انتخاب نوع قطعه (الکترونیک یا مکانیک)، فرم مشخصات فنی متناسب نمایش داده می‌شود و موجودی اولیه (تعداد ۰) به صورت خودکار توسط تریگر PostgreSQL ایجاد خواهد شد."
         }
       </div>
       <form id="item-modal-form" class="form-grid">
+        <div class="field">
+          <label for="m-item-root-cat">دسته‌بندی اصلی *</label>
+          <select id="m-item-root-cat" class="select" required>${rootOptions}</select>
+        </div>
+        <div class="field">
+          <label for="m-item-cat">زیردسته (نوع قطعه) *</label>
+          <select id="m-item-cat" class="select" required></select>
+        </div>
         <div class="field">
           <label for="m-item-code">کد قطعه *</label>
           <input id="m-item-code" class="input ltr" required maxlength="80" value="${escapeHtml(existing ? existing.item_code : "")}">
         </div>
         <div class="field">
-          <label for="m-item-cat">دسته‌بندی / زیردسته *</label>
-          <select id="m-item-cat" class="select" required>${catOptions}</select>
-        </div>
-        <div class="field">
-          <label for="m-item-model">مدل / پارت نامبر / مقدار</label>
-          <input id="m-item-model" class="input" maxlength="150" value="${escapeHtml(existing ? existing.model || "" : "")}">
-        </div>
-        <div class="field">
           <label for="m-item-location">محل نگهداری / کشو *</label>
           <input id="m-item-location" class="input" required maxlength="150" value="${escapeHtml(existing ? existing.location : "")}">
         </div>
-        <div class="field">
-          <label for="m-item-size">سایز / پکیج</label>
-          <input id="m-item-size" class="input" maxlength="50" value="${escapeHtml(existing ? existing.size || "" : "")}">
-        </div>
-        <div class="field">
-          <label for="m-item-mount">نوع نصب</label>
-          <select id="m-item-mount" class="select">
-            <option value="">نامشخص</option>
-            <option value="SMD" ${existing && existing.mounting_type === "SMD" ? "selected" : ""}>SMD</option>
-            <option value="DIP" ${existing && existing.mounting_type === "DIP" ? "selected" : ""}>DIP</option>
-          </select>
-        </div>
-        <div class="field">
-          <label for="m-item-voltage">ولتاژ</label>
-          <input id="m-item-voltage" class="input" maxlength="80" value="${escapeHtml(existing ? existing.voltage || "" : "")}">
-        </div>
-        <div class="field">
-          <label for="m-item-material">جنس / متریال</label>
-          <input id="m-item-material" class="input" maxlength="100" value="${escapeHtml(existing ? existing.material || "" : "")}">
-        </div>
+
+        <div id="m-dynamic-specs" class="form-grid" style="grid-column:1 / -1;"></div>
+
         <div class="field" style="grid-column: 1 / -1;">
           <label for="m-item-desc">توضیحات</label>
           <textarea id="m-item-desc" class="textarea">${escapeHtml(existing ? existing.description || "" : "")}</textarea>
@@ -159,18 +193,95 @@ export function openItemModal({
     `,
   });
 
+  const rootSel = document.getElementById("m-item-root-cat");
+  const subSel = document.getElementById("m-item-cat");
+  const specContainer = document.getElementById("m-dynamic-specs");
+
+  let activeSpecType = existing ? existing.item_type : null;
+  let preservedSpecs = existing ? { ...(existing.specs || {}) } : {};
+
+  function populateSubcategories(preselectId = null) {
+    const rid = rootSel.value ? Number(rootSel.value) : null;
+    const validSubs = rid
+      ? leafCategories.filter((c) => c.root_id === rid)
+      : [];
+
+    subSel.innerHTML = [
+      `<option value="">انتخاب زیردسته...</option>`,
+      ...validSubs.map((c) => {
+        const selected = preselectId && Number(preselectId) === c.id ? "selected" : "";
+        return `<option value="${c.id}" ${selected}>${escapeHtml(c.name)}</option>`;
+      }),
+    ].join("");
+
+    if (!subSel.value && validSubs.length === 1) {
+      subSel.value = String(validSubs[0].id);
+    }
+    syncDynamicSpecForm();
+  }
+
+  function syncDynamicSpecForm() {
+    const catId = subSel.value ? Number(subSel.value) : null;
+    const catObj = catId ? allCategories.find((c) => c.id === catId) : null;
+    const nextSpecType = catObj ? catObj.spec_type : null;
+
+    if (nextSpecType !== activeSpecType) {
+      activeSpecType = nextSpecType;
+      const seedSpecs =
+        existing && existing.item_type === nextSpecType
+          ? existing.specs || {}
+          : {};
+      renderDynamicSpecForm(specContainer, nextSpecType, seedSpecs);
+    } else if (nextSpecType) {
+      renderDynamicSpecForm(specContainer, nextSpecType, preservedSpecs);
+    } else {
+      renderDynamicSpecForm(specContainer, null, {});
+    }
+  }
+
+  rootSel.addEventListener("change", () => {
+    preservedSpecs = {};
+    populateSubcategories(null);
+  });
+
+  subSel.addEventListener("change", () => {
+    const catObj = subSel.value
+      ? allCategories.find((c) => c.id === Number(subSel.value))
+      : null;
+    const nextSpecType = catObj ? catObj.spec_type : null;
+    if (nextSpecType === activeSpecType && nextSpecType) {
+      return;
+    }
+    preservedSpecs = {};
+    syncDynamicSpecForm();
+  });
+
+  populateSubcategories(existing ? existing.category_id : null);
+
   modal.querySelector("#item-modal-form").addEventListener("submit", async (e) => {
     e.preventDefault();
+    const catId = Number(subSel.value);
+    const catObj = allCategories.find((c) => c.id === catId);
+    const specType = catObj ? catObj.spec_type : null;
+    if (!catId || !specType) {
+      toast("لطفاً دسته‌بندی اصلی و زیردسته معتبر انتخاب کنید.", "warning");
+      return;
+    }
+
+    let specs;
+    try {
+      specs = collectDynamicSpecForm(specContainer, specType);
+    } catch (validationErr) {
+      toast(validationErr.message, "warning");
+      return;
+    }
+
     const payload = {
       item_code: document.getElementById("m-item-code").value,
-      category_id: document.getElementById("m-item-cat").value,
-      model: document.getElementById("m-item-model").value,
+      category_id: catId,
       location: document.getElementById("m-item-location").value,
-      size: document.getElementById("m-item-size").value,
-      mounting_type: document.getElementById("m-item-mount").value || null,
-      voltage: document.getElementById("m-item-voltage").value,
-      material: document.getElementById("m-item-material").value,
       description: document.getElementById("m-item-desc").value,
+      specs,
     };
 
     try {
